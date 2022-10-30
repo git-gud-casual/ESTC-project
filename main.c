@@ -1,37 +1,54 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "nrf_delay.h"
-#include "boards.h"
 
-#define DEVICE_ID 6577
+#include "led_control/led_control.h"
+#include "button_control/button_control.h"
 
-void blink_led_n_times(uint32_t led_id, uint32_t times) {
-    for (uint32_t i = 0; i < times; i++) {
-        bsp_board_led_on(led_id);
-        nrf_delay_ms(500);
-        bsp_board_led_off(led_id);
-        nrf_delay_ms(500);
+#define SEQUENCE "RRGGGB"
+
+
+void led2_toggle_by_color(char color) {
+    switch (color) {
+        case 'R':
+            led_toggle(LED2_R_ID);
+            break;
+        case 'G':
+            led_toggle(LED2_G_ID);
+            break;
+        case 'B':
+            led_toggle(LED2_B_ID);
+            break;
     }
 }
 
-void blink_led_by_device_id(uint32_t led_id) {
-    uint32_t blinks_count;
-    for (int i = 1000; i > 0; i /= 10) {
-        blinks_count = DEVICE_ID / i % 10;
-        blink_led_n_times(led_id, blinks_count);
-        nrf_delay_ms(1000);
-    }
+void init_board() {
+    leds_init();
+    buttons_init();
 }
 
-int main(void)
-{
-    bsp_board_init(BSP_INIT_LEDS);
-    
-    while (true)
-    {
-        for (int i = 0; i < LEDS_NUMBER; i++)
-        {
-            blink_led_by_device_id(i);
+void main_loop() {
+    size_t i = 0;
+    uint16_t ms_count = 0;
+
+    while (true) {
+        while (button_pressed(BUTTON1_ID)) {
+            nrf_delay_ms(10);
+            ms_count += 10;
+            if (ms_count / 500 > 0) {
+                ms_count = 0;
+
+                if (SEQUENCE[i / 2] == '\0') {
+                    i = 0;
+                }
+                led2_toggle_by_color(SEQUENCE[i++ / 2]);
+            }
         }
+        ms_count = 0;
     }
+}
+
+int main(void) {
+    init_board();
+    main_loop();
 }

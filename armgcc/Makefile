@@ -6,7 +6,7 @@ DFU_PORT         ?= /dev/ttyACM0
 
 
 SDK_ROOT ?= /home/user/esl-nsdk
-PROJ_DIR ?= /home/user/ESTC-project
+PROJ_DIR ?= ./..
 
 $(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
   LINKER_SCRIPT  := blinky_gcc_nrf52.ld
@@ -31,6 +31,8 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/strerror/nrf_strerror.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(PROJ_DIR)/main.c \
+  $(PROJ_DIR)/led_control/led_control.c \
+  $(PROJ_DIR)/button_control/button_control.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
 
 # Include folders common to all targets
@@ -146,8 +148,7 @@ $(DFU_PACKAGE): $(OUTPUT_DIRECTORY)/nrf52840_xxaa.hex
 	   --application-version 1 \
 	   --sd-req 0x0,0x102 \
 	   --sd-id 0x102 \
-	   --application $< \
-	   --softdevice $(SDK_ROOT)/components/softdevice/s113/hex/s113_nrf52_7.2.0_softdevice.hex $@
+	   --application $< $@
 
 dfu: $(DFU_PACKAGE)
 	@echo Performing DFU with generated package
