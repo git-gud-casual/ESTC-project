@@ -41,6 +41,7 @@ void main_loop() {
                 if (SEQUENCE[i / 2] == '\0') {
                     i = 0;
                 }
+                
                 led2_toggle_by_color(SEQUENCE[i++ / 2]);
             }
         }

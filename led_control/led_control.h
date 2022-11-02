@@ -19,8 +19,8 @@
 
 void leds_init();
 
-void led_on(size_t led_id);
-void led_off(size_t led_id);
-void led_toggle(size_t led_id);
+void led_on(uint32_t led_id);
+void led_off(uint32_t led_id);
+void led_toggle(uint32_t led_id);
 
 #endif

@@ -12,6 +12,6 @@
 #define BUTTONS_ARRAY {BUTTON1}
 
 void buttons_init();
-bool button_pressed(size_t button_id);
+bool button_pressed(uint32_t button_id);
 
 #endif

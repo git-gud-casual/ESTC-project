@@ -36,14 +36,14 @@ void leds_init() {
     }
 }
 
-void led_off(size_t led_id) {
+void led_off(uint32_t led_id) {
     nrf_gpio_pin_write(leds_array[led_id], 1);
 }
 
-void led_on(size_t led_id) {
+void led_on(uint32_t led_id) {
     nrf_gpio_pin_write(leds_array[led_id], 0);
 }
 
-void led_toggle(size_t led_id) {
+void led_toggle(uint32_t led_id) {
     nrf_gpio_pin_toggle(leds_array[led_id]);
 }

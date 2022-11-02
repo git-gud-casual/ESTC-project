@@ -9,6 +9,6 @@ void buttons_init() {
     }
 }
 
-bool button_pressed(size_t button_id) {
+bool button_pressed(uint32_t button_id) {
     return !nrf_gpio_pin_read(buttons_array[button_id]);
 }
