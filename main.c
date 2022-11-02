@@ -28,21 +28,21 @@ void init_board() {
 }
 
 void main_loop() {
-    size_t i = 0;
+    size_t current_sequnce_char_index = 0;
     uint16_t ms_count = 0;
 
     while (true) {
         while (button_pressed(BUTTON1_ID)) {
             nrf_delay_ms(10);
             ms_count += 10;
-            if (ms_count / 500 > 0) {
+            if (ms_count > 500) {
                 ms_count = 0;
 
-                if (SEQUENCE[i / 2] == '\0') {
-                    i = 0;
+                if (SEQUENCE[current_sequnce_char_index / 2] == '\0') {
+                    current_sequnce_char_index = 0;
                 }
                 
-                led2_toggle_by_color(SEQUENCE[i++ / 2]);
+                led2_toggle_by_color(SEQUENCE[current_sequnce_char_index++ / 2]);
             }
         }
         ms_count = 0;
