@@ -1,6 +1,10 @@
 #include <stdint.h>
 #include "nrf_gpio.h"
 #include "led_control.h"
+#include "nrfx_systick.h"
+
+#define US_IN_SECOND 1000000
+#define FREQUENCY 1000
 
 static const uint8_t leds_array[LEDS_COUNT] = LEDS_ARRAY;
 
@@ -34,6 +38,7 @@ void leds_init() {
         nrf_gpio_cfg_output(leds_array[i]);
         led_off(i);
     }
+    nrfx_systick_init();
 }
 
 void led_off(uint32_t led_id) {
@@ -46,4 +51,30 @@ void led_on(uint32_t led_id) {
 
 void led_toggle(uint32_t led_id) {
     nrf_gpio_pin_toggle(leds_array[led_id]);
+}
+
+static uint32_t get_period_time_us(uint32_t frequency) {
+    return (uint32_t)((float)US_IN_SECOND / frequency);
+}
+
+static uint32_t get_time_on_us(uint32_t period_time_us, uint8_t duty_cycle) {
+    return (uint32_t)((float)(period_time_us) / 100 * duty_cycle);
+}
+
+void pwm_write(uint32_t led_id, uint8_t duty_cycle) {
+    nrfx_systick_state_t systick_time;
+    uint32_t period_time_us = get_period_time_us(FREQUENCY);
+    uint32_t time_on_us = get_time_on_us(period_time_us, duty_cycle);
+
+    if (time_on_us > 0) {
+        led_on(led_id);
+        nrfx_systick_get(&systick_time);
+        while (!nrfx_systick_test(&systick_time, time_on_us));
+    }
+
+    if (period_time_us != time_on_us) {
+        led_off(led_id);
+        nrfx_systick_get(&systick_time);
+        while (!nrfx_systick_test(&systick_time, period_time_us - time_on_us));
+    }
 }

@@ -11,7 +11,11 @@
 
 #define BUTTONS_ARRAY {BUTTON1}
 
+
+
 void buttons_init();
+void button_control_init();
+void button_interrupt_init(uint32_t button_id, void (*once_click_handler)(void), void (*double_click_handler)(void));
 bool button_pressed(uint32_t button_id);
 
 #endif

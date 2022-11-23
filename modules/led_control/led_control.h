@@ -22,5 +22,6 @@ void leds_init();
 void led_on(uint32_t led_id);
 void led_off(uint32_t led_id);
 void led_toggle(uint32_t led_id);
+void pwm_write(uint32_t led_id, uint8_t duty_cycle);
 
 #endif
