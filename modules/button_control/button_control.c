@@ -15,8 +15,7 @@ static struct {
     uint32_t button_id;
     uint8_t button_clicks_count;
     bool debounce_proccessing;
-    void (*double_click_handler)(void);
-    void (*once_click_handler)(void);
+    click_handler_t click_handler;
 } button_config_s;
 
 const static uint8_t buttons_array[BUTTONS_COUNT] = BUTTONS_ARRAY;
@@ -29,10 +28,9 @@ static void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) 
     }
 }
 
-void button_interrupt_init(uint32_t button_id, void (*once_click_handler)(void), void (*double_click_handler)(void)) {
+void button_interrupt_init(uint32_t button_id, click_handler_t click_handler) {
     button_config_s.button_id = button_id;
-    button_config_s.once_click_handler = once_click_handler;
-    button_config_s.double_click_handler = double_click_handler;
+    button_config_s.click_handler = click_handler;
     button_config_s.button_clicks_count = 0;
     button_config_s.debounce_proccessing = false;
 
@@ -53,11 +51,8 @@ static void debouncing_timer_handler(void* p_context) {
 
 static void clicks_count_timer_handler(void* p_context) {
     NRF_LOG_INFO("Clicks count: %" PRIu8, button_config_s.button_clicks_count);
-    if (button_config_s.button_clicks_count == 1 && button_config_s.once_click_handler != NULL) {
-        button_config_s.once_click_handler();
-    }
-    else if(button_config_s.button_clicks_count == 2 && button_config_s.double_click_handler != NULL) {
-        button_config_s.double_click_handler();
+    if (button_config_s.click_handler != NULL) {
+        button_config_s.click_handler(button_config_s.button_clicks_count);
     }
     button_config_s.button_clicks_count = 0;
 }

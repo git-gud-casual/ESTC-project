@@ -43,16 +43,18 @@ void light_up_with_brightness(char color, uint8_t brightness_percent, uint32_t t
     }
 }
 
-void double_click_handler() {
-    NRF_LOG_INFO("DOUBLE_CLICK");
-    pause = !pause;
+void double_click_handler(uint8_t clicks_count) {
+    if (clicks_count == 2) {
+        NRF_LOG_INFO("DOUBLE_CLICK");
+        pause = !pause;
+    }
 }
 
 void init_board() {
     leds_init();
     button_control_init();
     nrfx_systick_init();
-    button_interrupt_init(BUTTON1_ID, NULL, double_click_handler);
+    button_interrupt_init(BUTTON1_ID, double_click_handler);
 
     ret_code_t ret = NRF_LOG_INIT(NULL);
     APP_ERROR_CHECK(ret);
