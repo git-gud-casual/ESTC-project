@@ -14,21 +14,19 @@ APP_TIMER_DEF(clicks_count_timer);
 static struct {
     uint32_t button_id;
     uint8_t button_clicks_count;
+    bool debounce_proccessing;
     void (*double_click_handler)(void);
     void (*once_click_handler)(void);
 } button_config_s;
 
 const static uint8_t buttons_array[BUTTONS_COUNT] = BUTTONS_ARRAY;
 
-void buttons_init() {
-    for (size_t i = 0; i < BUTTONS_COUNT; i++) {
-        nrf_gpio_cfg_input(buttons_array[i], NRF_GPIO_PIN_PULLUP);
-    }
-}
-
 static void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
-    NRF_LOG_INFO("Button pressed");
-    app_timer_start(debouncing_timer, APP_TIMER_TICKS(DEBOUNCING_TIMEOUT_MS), NULL);
+    if (!button_config_s.debounce_proccessing) {
+        NRF_LOG_INFO("Button pressed");
+        button_config_s.debounce_proccessing = true;
+        app_timer_start(debouncing_timer, APP_TIMER_TICKS(DEBOUNCING_TIMEOUT_MS), NULL);
+    }
 }
 
 void button_interrupt_init(uint32_t button_id, void (*once_click_handler)(void), void (*double_click_handler)(void)) {
@@ -36,6 +34,7 @@ void button_interrupt_init(uint32_t button_id, void (*once_click_handler)(void),
     button_config_s.once_click_handler = once_click_handler;
     button_config_s.double_click_handler = double_click_handler;
     button_config_s.button_clicks_count = 0;
+    button_config_s.debounce_proccessing = false;
 
     nrfx_gpiote_in_config_t button_config = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(false);
     button_config.pull = NRF_GPIO_PIN_PULLUP;
@@ -49,6 +48,7 @@ static void debouncing_timer_handler(void* p_context) {
         app_timer_stop(clicks_count_timer);
         app_timer_start(clicks_count_timer, APP_TIMER_TICKS(CLICKS_COUNT_TIMEOUT_MS), NULL);
     }
+    button_config_s.debounce_proccessing = false;
 }
 
 static void clicks_count_timer_handler(void* p_context) {
