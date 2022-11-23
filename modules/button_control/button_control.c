@@ -34,7 +34,7 @@ void button_interrupt_init(uint32_t button_id, click_handler_t click_handler) {
     button_config_s.button_clicks_count = 0;
     button_config_s.debounce_proccessing = false;
 
-    nrfx_gpiote_in_config_t button_config = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(false);
+    nrfx_gpiote_in_config_t button_config = NRFX_GPIOTE_CONFIG_IN_SENSE_TOGGLE(false);
     button_config.pull = NRF_GPIO_PIN_PULLUP;
     nrfx_gpiote_in_init(buttons_array[button_id], &button_config, button_handler);
     nrfx_gpiote_in_event_enable(buttons_array[button_id], true);
