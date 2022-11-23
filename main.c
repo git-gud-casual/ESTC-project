@@ -6,7 +6,6 @@
 #include "modules/button_control/button_control.h"
 #include "nrfx_systick.h"
 
-/* Logs libraries */
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
