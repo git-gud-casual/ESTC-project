@@ -4,7 +4,6 @@
 #include "nrfx_systick.h"
 
 #define US_IN_SECOND 1000000
-#define FREQUENCY 1000
 
 static const uint8_t leds_array[LEDS_COUNT] = LEDS_ARRAY;
 
@@ -61,20 +60,29 @@ static uint32_t get_time_on_us(uint32_t period_time_us, uint8_t duty_cycle) {
     return (uint32_t)((float)(period_time_us) / 100 * duty_cycle);
 }
 
-void pwm_write(uint32_t led_id, uint8_t duty_cycle) {
-    nrfx_systick_state_t systick_time;
-    uint32_t period_time_us = get_period_time_us(FREQUENCY);
-    uint32_t time_on_us = get_time_on_us(period_time_us, duty_cycle);
+pwm_config_t create_pwm_config(uint32_t frequency) {
+    pwm_config_t pwm_conf = {.is_on = false, .period_time_us = get_period_time_us(frequency),
+    .time_on_us = 0};
+    return pwm_conf;
+}
 
-    if (time_on_us > 0) {
-        led_on(led_id);
-        nrfx_systick_get(&systick_time);
-        while (!nrfx_systick_test(&systick_time, time_on_us));
+void set_duty_cycle(pwm_config_t* pwm_conf, uint8_t duty_cycle) {
+    pwm_conf->time_on_us = get_time_on_us(pwm_conf->period_time_us, duty_cycle);
+}
+
+void pwm_write(uint32_t led_id, pwm_config_t* pwm_conf) {
+    if (pwm_conf->is_on) {
+        if (nrfx_systick_test(&pwm_conf->started, pwm_conf->time_on_us)) {
+            led_off(led_id);
+            pwm_conf->is_on = false;
+            nrfx_systick_get(&pwm_conf->started);
+        }
     }
-
-    if (period_time_us != time_on_us) {
-        led_off(led_id);
-        nrfx_systick_get(&systick_time);
-        while (!nrfx_systick_test(&systick_time, period_time_us - time_on_us));
+    else {
+        if (nrfx_systick_test(&pwm_conf->started, pwm_conf->period_time_us - pwm_conf->time_on_us)) {
+            led_on(led_id);
+            pwm_conf->is_on = true;
+            nrfx_systick_get(&pwm_conf->started);
+        } 
     }
 }

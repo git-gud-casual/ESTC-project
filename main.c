@@ -13,32 +13,23 @@
 
 
 #define SEQUENCE "RGB"
-#define PWM_TURN_ON_TIME_US 25000
+#define FREQUENCY 1000
+#define DUTY_CYCLE_CHANGE_TIME_US 25000
 
 
 static volatile bool pause = false;
 
 
-void light_up_with_brightness(char color, uint8_t brightness_percent, uint32_t time_us) {
-    uint32_t led_id;
+uint32_t get_led_id(char color) {
     switch (color) {
         case 'R':
-            led_id = LED2_R_ID;
-            break;
+            return LED2_R_ID;
         case 'G':
-            led_id = LED2_G_ID;
-            break;
+            return LED2_G_ID;
         case 'B':
-            led_id = LED2_B_ID;
-            break;
+            return LED2_B_ID;
         default:
-            return;
-    }
-    
-    nrfx_systick_state_t systick_time;
-    nrfx_systick_get(&systick_time);
-    while (!nrfx_systick_test(&systick_time, time_us)) {
-        pwm_write(led_id, brightness_percent);
+            return 0;
     }
 }
 
@@ -65,12 +56,16 @@ void main_loop() {
     int8_t duty_cycle = 0;
     int8_t surplus_val = 1;
     size_t current_char_id = 0;
+    pwm_config_t pwm_conf = create_pwm_config(FREQUENCY);
+
+    nrfx_systick_state_t duty_cycle_change_time;
+    nrfx_systick_get(&duty_cycle_change_time);
 
     while (true)
     {
-        light_up_with_brightness(SEQUENCE[current_char_id], duty_cycle, PWM_TURN_ON_TIME_US);
+        pwm_write(get_led_id(SEQUENCE[current_char_id]), &pwm_conf);
 
-        if (!pause) {
+        if (!pause && nrfx_systick_test(&duty_cycle_change_time, DUTY_CYCLE_CHANGE_TIME_US)) {
             duty_cycle += surplus_val;
             if (duty_cycle == -1) {
                 surplus_val = 1;
@@ -87,6 +82,8 @@ void main_loop() {
                 surplus_val = -1;
                 duty_cycle = 100;
             }
+            set_duty_cycle(&pwm_conf, duty_cycle);
+            nrfx_systick_get(&duty_cycle_change_time);
         }
         LOG_BACKEND_USB_PROCESS();
         NRF_LOG_PROCESS();
