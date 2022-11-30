@@ -66,6 +66,7 @@ SRC_FILES += \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/modules/led_control/led_control.c \
   $(PROJ_DIR)/modules/button_control/button_control.c \
+  $(PROJ_DIR)/modules/color_types/color_types.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
