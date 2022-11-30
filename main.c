@@ -5,10 +5,11 @@
 
 #include "modules/led_control/led_control.h"
 #include "modules/button_control/button_control.h"
+#include "modules/color_types/color_types.h"
+
 #include "nrfx_pwm.h"
 #include "app_timer.h"
 #include "nrfx_systick.h"
-#include <math.h>
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -20,6 +21,9 @@
 #define SATURATION_MODIFICATION_LED1_BLINK_TIME_MS 1
 #define PWM_TOP_VALUE 255
 #define PWM_STEP 1
+#define HUE_STEP 1
+#define SATURATION_STEP 1
+#define VALUE_STEP 1
 #define CHANGE_COLOR_SPEED_TIME_US 20000
 
 
@@ -94,67 +98,6 @@ void init_board() {
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-typedef struct {
-    uint16_t h;
-    uint8_t s;
-    uint8_t v;
-} hsv_data_t;
-
-hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v) {
-    // NRF_LOG_INFO("New hsv_data_t h = %" PRIu16 ", s = %" PRIu8 ", v = %" PRIu8, h, s, v);
-    return (hsv_data_t) {.h = h, .s = s, .v = v};
-}
-
-typedef struct {
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-} rgb_data_t;
-
-rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b) {
-    // NRF_LOG_INFO("New rgb_data_t r = %" PRIu8 ", g = %" PRIu8 ", b = %" PRIu8, r, g, b);
-    return (rgb_data_t) {.r = r, .g = g, .b = b};
-}
-
-rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data) {
-    float c = (float)(hsv_data->v * hsv_data->s) / 10000;
-    float x = c * (1 - fabsf(fmodf((float)hsv_data->h / 60, 2) - 1));
-    float m = (float)hsv_data->v / 100 - c; 
-    float r_component, g_component, b_component;
-
-    if (hsv_data->h < 60) {
-        r_component = c;
-        g_component = x;
-        b_component = 0;
-    }
-    else if (hsv_data->h < 120) {
-        r_component = x;
-        g_component = c;
-        b_component = 0;
-    }
-    else if (hsv_data->h < 180) {
-        r_component = 0;
-        g_component = c;
-        b_component = x;
-    }
-    else if (hsv_data->h < 240) {
-        r_component = 0;
-        g_component = x;
-        b_component = c;
-    }
-    else if (hsv_data->h < 300) {
-        r_component = x;
-        g_component = 0;
-        b_component = c;
-    }
-    else {
-        r_component = c;
-        g_component = 0;
-        b_component = x;
-    }
-    return new_rgb((r_component + m) * 255, (g_component + m) * 255, (b_component + m) * 255);
-}
-
 
 void led1_blink_timer_handler(void* p_context) {
     if (seq_values.channel_3 + pwm_step > PWM_TOP_VALUE || seq_values.channel_3 + pwm_step < 0) {
@@ -187,17 +130,27 @@ void main_loop() {
 
     button_interrupt_init(BUTTON1_ID, click_handler, release_handler);
 
+    int8_t hue_step = HUE_STEP;
+    int8_t saturation_step = SATURATION_STEP;
+    int8_t value_step = VALUE_STEP;
+
     while (true) {
         if (current_input_state != NO_INPUT && should_change_color && nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
             switch (current_input_state) {
                 case HUE_MODIFICATION:
-                    hsv.h = (hsv.h + 1) % 360;
+                    hsv.h = (hsv.h + hue_step) % 360;
                     break;
                 case SATURATION_MODIFICATION:
-                    hsv.s = (hsv.s + 1) % 101;
+                    if (saturation_step + hsv.s > 100 || hsv.s + saturation_step < 0) {
+                        saturation_step *= -1;
+                    }
+                    hsv.s += saturation_step;
                     break;
                 case BRIGHTNESS_MODIFICATION:
-                    hsv.v = (hsv.v + 1) % 101;
+                    if (hsv.v + value_step > 100 || hsv.v + value_step < 0) {
+                        value_step *= -1;
+                    }
+                    hsv.v += value_step;
                     break;
                 case NO_INPUT:
                     break;
