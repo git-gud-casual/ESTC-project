@@ -28,13 +28,13 @@
 
 
 typedef enum {
-    NO_INPUT,
-    HUE_MODIFICATION,
-    SATURATION_MODIFICATION,
-    BRIGHTNESS_MODIFICATION
+    STATE_NO_INPUT,
+    STATE_HUE_MODIFICATION,
+    STATE_SATURATION_MODIFICATION,
+    STATE_BRIGHTNESS_MODIFICATION
 } input_states_t;
 
-static input_states_t current_input_state = NO_INPUT;
+static input_states_t current_input_state = STATE_NO_INPUT;
 static nrf_pwm_values_individual_t seq_values;
 
 static volatile int8_t pwm_step = PWM_STEP;
@@ -56,22 +56,22 @@ void click_handler(uint8_t clicks_count) {
     NRF_LOG_INFO("CLICK HANDLER %" PRIu8 " clicks", clicks_count);
     if (clicks_count == 2) {
         switch (current_input_state) {
-            case NO_INPUT:
-                current_input_state = HUE_MODIFICATION;
+            case STATE_NO_INPUT:
+                current_input_state = STATE_HUE_MODIFICATION;
                 app_timer_start(led1_blink_timer, APP_TIMER_TICKS(HUE_MODIFICATION_LED1_BLINK_TIME_MS), NULL);
                 break;
-            case HUE_MODIFICATION:
-                current_input_state = SATURATION_MODIFICATION;
+            case STATE_HUE_MODIFICATION:
+                current_input_state = STATE_SATURATION_MODIFICATION;
                 app_timer_stop(led1_blink_timer);
                 app_timer_start(led1_blink_timer, APP_TIMER_TICKS(SATURATION_MODIFICATION_LED1_BLINK_TIME_MS), NULL);
                 break;
-            case SATURATION_MODIFICATION:
-                current_input_state = BRIGHTNESS_MODIFICATION;
+            case STATE_SATURATION_MODIFICATION:
+                current_input_state = STATE_BRIGHTNESS_MODIFICATION;
                 app_timer_stop(led1_blink_timer);
                 seq_values.channel_3 = PWM_TOP_VALUE;
                 break;
-            case BRIGHTNESS_MODIFICATION:
-                current_input_state = NO_INPUT;
+            case STATE_BRIGHTNESS_MODIFICATION:
+                current_input_state = STATE_NO_INPUT;
                 should_save_data = true;
                 seq_values.channel_3 = 0;
                 break;
@@ -123,7 +123,7 @@ void main_loop() {
 
     app_timer_create(&led1_blink_timer, APP_TIMER_MODE_REPEATED, led1_blink_timer_handler);
 
-    hsv_data_t hsv = get_last_saved_or_default_hsv_data();
+    hsv_data_t hsv =  get_last_saved_or_default_hsv_data();
     rgb_data_t rgb = get_rgb_from_hsv(&hsv);
 
     seq_values.channel_0 = rgb.r;
@@ -137,28 +137,29 @@ void main_loop() {
     int8_t value_step = VALUE_STEP;
 
     while (true) {
-        if (current_input_state == NO_INPUT && should_save_data) {
-            save_hsv_data(hsv);
+        get_last_saved_or_default_hsv_data();
+        if (current_input_state == STATE_NO_INPUT && should_save_data) {
+            save_hsv_data(&hsv);
             should_save_data = false;
         }
         else if (should_change_color && nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
             switch (current_input_state) {
-                case HUE_MODIFICATION:
+                case STATE_HUE_MODIFICATION:
                     hsv.h = (hsv.h + hue_step) % 360;
                     break;
-                case SATURATION_MODIFICATION:
+                case STATE_SATURATION_MODIFICATION:
                     if (saturation_step + hsv.s > 100 || hsv.s + saturation_step < 0) {
                         saturation_step *= -1;
                     }
                     hsv.s += saturation_step;
                     break;
-                case BRIGHTNESS_MODIFICATION:
+                case STATE_BRIGHTNESS_MODIFICATION:
                     if (hsv.v + value_step > 100 || hsv.v + value_step < 0) {
                         value_step *= -1;
                     }
                     hsv.v += value_step;
                     break;
-                case NO_INPUT:
+                case STATE_NO_INPUT:
                     break;
             }
             rgb = get_rgb_from_hsv(&hsv);

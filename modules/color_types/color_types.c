@@ -3,19 +3,20 @@
 #include <inttypes.h>
 
 #include "nrfx_nvmc.h"
-#include "crc32.h"
 #include "nrf_dfu_types.h"
 #include "nrf_log.h"
 
-#define APP_DATA_ADDR BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE 
+#define APP_DATA_ADDR (BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE)
+#define GET_ADDRESS_BY_OFFSET(offset) (APP_DATA_ADDR + offset)
 #define WORD_SIZE 4
-#define HSV_DATA_SIZE 4
 #define DEVICE_ID_LAST_DIGITS 77
-static bool last_record_address_is_valid = false;
-static uint32_t last_record_address;
+#define SIGNATURE 0b00101
+
+static bool offset_defined = false;
+static uint32_t last_hsv_offset;
 
 hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v) {
-    return (hsv_data_t) {.h = h, .s = s, .v = v};
+    return (hsv_data_t) {.h = h, .s = s, .v = v, ._signature = SIGNATURE};
 }
 
 rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b) {
@@ -61,42 +62,56 @@ rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data) {
     return new_rgb((r_component + m) * 255, (g_component + m) * 255, (b_component + m) * 255);
 }
 
-static uint32_t get_crc32(hsv_data_t* hsv) {
-    return crc32_compute(hsv->_data, sizeof(hsv_data_t) - 4, NULL);
+static hsv_data_t get_hsv_by_address(uint32_t address) {
+    return (hsv_data_t) {*((uint32_t*) address)};
+}
+
+static void write_hsv(hsv_data_t* hsv) {
+    if (offset_defined) {
+        nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(last_hsv_offset), hsv->_value);
+        while (!nrfx_nvmc_write_done_check());
+    }
 }
 
 hsv_data_t get_last_saved_or_default_hsv_data() {
-    hsv_data_t* hsv;
-    if (!last_record_address_is_valid) {
-        for (uint32_t address = BOOTLOADER_ADDRESS - WORD_SIZE * 2; address >= APP_DATA_ADDR; address -= WORD_SIZE * 2) {
-            hsv = (hsv_data_t*) address;
-            if (get_crc32(hsv) == hsv->_crc32) {
-                last_record_address = address;
-                last_record_address_is_valid = true;
-                hsv = (hsv_data_t*) address;
-                return new_hsv(hsv->h, hsv->s, hsv->v);
-            }
-        }
-    }
-    return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
-}
-
-void save_hsv_data(hsv_data_t hsv) {
-    hsv._crc32 = get_crc32(&hsv);
-    if (!last_record_address_is_valid || last_record_address == BOOTLOADER_ADDRESS - 2 * WORD_SIZE) {
-        last_record_address = APP_DATA_ADDR;
+    if (offset_defined) {
+        return get_hsv_by_address(GET_ADDRESS_BY_OFFSET(last_hsv_offset));
     }
     else {
-        last_record_address += WORD_SIZE * 2;
+        hsv_data_t hsv;
+        for (uint32_t address = BOOTLOADER_ADDRESS - WORD_SIZE; address >= APP_DATA_ADDR; address -= WORD_SIZE) {
+            hsv = get_hsv_by_address(address);
+            if (hsv._signature == SIGNATURE) {
+                last_hsv_offset = address - APP_DATA_ADDR;
+                offset_defined = true;
+                return hsv;
+            }
+        }
+        return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
+    }
+}
+
+void save_hsv_data(hsv_data_t* hsv) {
+    hsv->_is_writeable = 1;
+    if (offset_defined &&
+        nrfx_nvmc_word_writable_check(last_hsv_offset + APP_DATA_ADDR, hsv->_value)) {
+
+        hsv->_is_writeable = 0;
+        write_hsv(hsv);
+        return;
+    }
+    
+    if (!offset_defined) {
+        last_hsv_offset = 0;
+    }
+    else {
+        last_hsv_offset = (last_hsv_offset + WORD_SIZE) % NRF_DFU_APP_DATA_AREA_SIZE;
     }
 
-    if ((last_record_address - APP_DATA_ADDR) % CODE_PAGE_SIZE == 0) {
-        nrfx_nvmc_page_erase(last_record_address);
+    if (last_hsv_offset % CODE_PAGE_SIZE == 0) {
+        nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(last_hsv_offset));
     }
 
-    nrfx_nvmc_bytes_write(last_record_address, hsv._data, 4);
-    while (!nrfx_nvmc_write_done_check());
-    nrfx_nvmc_bytes_write(last_record_address + WORD_SIZE, hsv._data + HSV_DATA_SIZE, 4);
-    while (!nrfx_nvmc_write_done_check());
-    last_record_address_is_valid = true;
+    write_hsv(hsv);
+    offset_defined = true;
 }
