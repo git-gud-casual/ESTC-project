@@ -7,7 +7,7 @@
 #include "nrf_dfu_types.h"
 #include "nrf_log.h"
 
-#define APP_DATA_ADDR BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE
+#define APP_DATA_ADDR BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE 
 #define WORD_SIZE 4
 #define HSV_DATA_SIZE 4
 #define DEVICE_ID_LAST_DIGITS 77
@@ -68,21 +68,17 @@ static uint32_t get_crc32(hsv_data_t* hsv) {
 hsv_data_t get_last_saved_or_default_hsv_data() {
     hsv_data_t* hsv;
     if (!last_record_address_is_valid) {
-        for (uint32_t address = APP_DATA_ADDR; address <= BOOTLOADER_ADDRESS; address += sizeof(hsv_data_t)) {
+        for (uint32_t address = BOOTLOADER_ADDRESS - WORD_SIZE * 2; address >= APP_DATA_ADDR; address -= WORD_SIZE * 2) {
             hsv = (hsv_data_t*) address;
-            if (get_crc32(hsv) != hsv->_crc32) {
-                if (address != APP_DATA_ADDR) {
-                    last_record_address = address - sizeof(hsv_data_t);
-                    last_record_address_is_valid = true;
-                }
-                else {
-                    return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
-                }
+            if (get_crc32(hsv) == hsv->_crc32) {
+                last_record_address = address;
+                last_record_address_is_valid = true;
+                hsv = (hsv_data_t*) address;
+                return new_hsv(hsv->h, hsv->s, hsv->v);
             }
         }
     }
-    hsv = (hsv_data_t*) last_record_address;
-    return new_hsv(hsv->h, hsv->s, hsv->v);
+    return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
 }
 
 void save_hsv_data(hsv_data_t hsv) {
@@ -100,7 +96,7 @@ void save_hsv_data(hsv_data_t hsv) {
 
     nrfx_nvmc_bytes_write(last_record_address, hsv._data, 4);
     while (!nrfx_nvmc_write_done_check());
-    nrfx_nvmc_word_write(last_record_address + WORD_SIZE, hsv._crc32);
+    nrfx_nvmc_bytes_write(last_record_address + WORD_SIZE, hsv._data + HSV_DATA_SIZE, 4);
     while (!nrfx_nvmc_write_done_check());
     last_record_address_is_valid = true;
 }

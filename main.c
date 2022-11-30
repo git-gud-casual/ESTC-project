@@ -10,7 +10,6 @@
 #include "nrfx_pwm.h"
 #include "app_timer.h"
 #include "nrfx_systick.h"
-#include "nrfx_nvmc.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
