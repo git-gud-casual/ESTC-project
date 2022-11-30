@@ -10,6 +10,7 @@
 #include "nrfx_pwm.h"
 #include "app_timer.h"
 #include "nrfx_systick.h"
+#include "nrfx_nvmc.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -39,6 +40,7 @@ static nrf_pwm_values_individual_t seq_values;
 
 static volatile int8_t pwm_step = PWM_STEP;
 static volatile bool should_change_color = false;
+static volatile bool should_save_data = false;
 static nrfx_systick_state_t change_color_speed_timer;
 APP_TIMER_DEF(led1_blink_timer);
 
@@ -71,6 +73,7 @@ void click_handler(uint8_t clicks_count) {
                 break;
             case BRIGHTNESS_MODIFICATION:
                 current_input_state = NO_INPUT;
+                should_save_data = true;
                 seq_values.channel_3 = 0;
                 break;
         }
@@ -121,7 +124,7 @@ void main_loop() {
 
     app_timer_create(&led1_blink_timer, APP_TIMER_MODE_REPEATED, led1_blink_timer_handler);
 
-    hsv_data_t hsv = new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
+    hsv_data_t hsv = get_last_saved_or_default_hsv_data();
     rgb_data_t rgb = get_rgb_from_hsv(&hsv);
 
     seq_values.channel_0 = rgb.r;
@@ -135,7 +138,11 @@ void main_loop() {
     int8_t value_step = VALUE_STEP;
 
     while (true) {
-        if (current_input_state != NO_INPUT && should_change_color && nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
+        if (current_input_state == NO_INPUT && should_save_data) {
+            save_hsv_data(hsv);
+            should_save_data = false;
+        }
+        else if (should_change_color && nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
             switch (current_input_state) {
                 case HUE_MODIFICATION:
                     hsv.h = (hsv.h + hue_step) % 360;
