@@ -81,10 +81,15 @@ hsv_data_t get_last_saved_or_default_hsv_data() {
     }
     else {
         hsv_data_t hsv;
-        for (uint32_t address = BOOTLOADER_ADDR - WORD_SIZE; address >= APP_DATA_ADDR; address -= WORD_SIZE) {
+        for (uint32_t address = APP_DATA_ADDR; address < BOOTLOADER_ADDR; address += WORD_SIZE) {
             hsv = get_hsv_by_address(address);
-            if (hsv._signature == SIGNATURE) {
+            if (hsv._signature != SIGNATURE) {
+                if (address == APP_DATA_ADDR) {
+                    break;
+                }
+
                 NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address);
+                hsv = get_hsv_by_address(address - WORD_SIZE);
                 last_hsv_offset = address - APP_DATA_ADDR;
                 offset_defined = true;
                 return hsv;
