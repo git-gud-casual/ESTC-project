@@ -90,7 +90,7 @@ hsv_data_t get_last_saved_or_default_hsv_data() {
 
                 NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address);
                 hsv = get_hsv_by_address(address - WORD_SIZE);
-                last_hsv_offset = address - APP_DATA_ADDR;
+                last_hsv_offset = address - APP_DATA_ADDR - WORD_SIZE;
                 offset_defined = true;
                 return hsv;
             }
