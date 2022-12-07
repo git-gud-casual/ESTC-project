@@ -97,6 +97,11 @@ hsv_data_t get_last_saved_or_default_hsv_data() {
                 offset_defined = true;
                 return hsv;
             }
+            else if (address == BOOTLOADER_ADDR - WORD_SIZE) {
+                last_hsv_offset = address - APP_DATA_ADDR - WORD_SIZE;
+                offset_defined = true;
+                return hsv;
+            }
         }
         return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
     }
