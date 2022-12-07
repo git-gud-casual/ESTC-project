@@ -113,3 +113,8 @@ void save_hsv_data(hsv_data_t* hsv) {
     write_hsv(hsv);
     offset_defined = true;
 }
+
+
+void init_nmvc() {
+    get_last_saved_or_default_hsv_data();
+}

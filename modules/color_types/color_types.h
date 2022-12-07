@@ -26,6 +26,7 @@ hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v);
 rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data);
 hsv_data_t get_last_saved_or_default_hsv_data();
 void save_hsv_data(hsv_data_t* hsv);
+void init_nmvc();
 
 
 #endif

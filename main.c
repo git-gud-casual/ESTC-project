@@ -98,6 +98,8 @@ void init_board() {
     app_timer_init();
     nrfx_systick_init();
 
+    init_nmvc();
+
     button_control_init();
     ret_code_t ret = NRF_LOG_INIT(NULL);
     APP_ERROR_CHECK(ret);
