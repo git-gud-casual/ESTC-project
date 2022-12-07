@@ -72,6 +72,7 @@ static void write_hsv(hsv_data_t* hsv) {
     if (offset_defined) {
         nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(last_hsv_offset), hsv->_value);
         while (!nrfx_nvmc_write_done_check());
+        NRF_LOG_INFO("Data has been written");
     }
 }
 
@@ -83,13 +84,15 @@ hsv_data_t get_last_saved_or_default_hsv_data() {
         hsv_data_t hsv;
         for (uint32_t address = APP_DATA_ADDR; address < BOOTLOADER_ADDR; address += WORD_SIZE) {
             hsv = get_hsv_by_address(address);
+            NRF_LOG_INFO("hsv_data_t is 0x%" PRIx32, hsv._value);
             if (hsv._signature != SIGNATURE) {
+                NRF_LOG_INFO("Found invalid data 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address);
                 if (address == APP_DATA_ADDR) {
                     break;
                 }
 
-                NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address);
                 hsv = get_hsv_by_address(address - WORD_SIZE);
+                NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address - WORD_SIZE);
                 last_hsv_offset = address - APP_DATA_ADDR - WORD_SIZE;
                 offset_defined = true;
                 return hsv;
@@ -104,14 +107,15 @@ void save_hsv_data(hsv_data_t* hsv) {
     if (offset_defined &&
         nrfx_nvmc_word_writable_check(last_hsv_offset + APP_DATA_ADDR, hsv->_value)) {
         
-        NRF_LOG_INFO("Attempt to rewrite hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv->_value, GET_ADDRESS_BY_OFFSET(last_hsv_offset));
         hsv->_is_writeable = 0;
+        NRF_LOG_INFO("Attempt to rewrite hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv->_value, GET_ADDRESS_BY_OFFSET(last_hsv_offset));
         write_hsv(hsv);
         return;
     }
     
     if (!offset_defined) {
         last_hsv_offset = 0;
+        offset_defined = true;
     }
     else {
         last_hsv_offset = (last_hsv_offset + WORD_SIZE) % NRF_DFU_APP_DATA_AREA_SIZE;
@@ -123,7 +127,6 @@ void save_hsv_data(hsv_data_t* hsv) {
 
     NRF_LOG_INFO("Attempt to write hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv->_value, GET_ADDRESS_BY_OFFSET(last_hsv_offset));
     write_hsv(hsv);
-    offset_defined = true;
 }
 
 
