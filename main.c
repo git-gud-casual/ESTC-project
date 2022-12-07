@@ -86,6 +86,14 @@ void release_handler() {
     should_change_color = false;
 } 
 
+void led1_blink_timer_handler(void* p_context) {
+    uint16_t led1_brightness = get_led1_brightness();
+    if (led1_brightness + pwm_step > PWM_TOP_VALUE || led1_brightness  + pwm_step < 0) {
+        pwm_step *= -1;
+    }
+    set_led1_brightness(led1_brightness + pwm_step);
+}
+
 void init_board() {
     app_timer_init();
     nrfx_systick_init();
@@ -95,15 +103,6 @@ void init_board() {
     APP_ERROR_CHECK(ret);
 
     NRF_LOG_DEFAULT_BACKENDS_INIT();
-}
-
-
-void led1_blink_timer_handler(void* p_context) {
-    uint16_t led1_brightness = get_led1_brightness();
-    if (led1_brightness + pwm_step > PWM_TOP_VALUE || led1_brightness  + pwm_step < 0) {
-        pwm_step *= -1;
-    }
-    set_led1_brightness(led1_brightness + pwm_step);
 }
 
 
