@@ -6,6 +6,7 @@
 #include "modules/led_control/led_control.h"
 #include "modules/button_control/button_control.h"
 #include "modules/color_types/color_types.h"
+#include "modules/led_color/led_color.h"
 
 #include "nrfx_pwm.h"
 #include "app_timer.h"
@@ -16,14 +17,15 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
-#define DEVICE_ID_LAST_DIGITS 77
+
 #define HUE_MODIFICATION_LED1_BLINK_TIME_MS 10
 #define SATURATION_MODIFICATION_LED1_BLINK_TIME_MS 1
-#define PWM_TOP_VALUE 255
+
 #define PWM_STEP 1
 #define HUE_STEP 1
 #define SATURATION_STEP 1
 #define VALUE_STEP 1
+
 #define CHANGE_COLOR_SPEED_TIME_US 20000
 
 
@@ -34,22 +36,15 @@ typedef enum {
     STATE_BRIGHTNESS_MODIFICATION
 } input_states_t;
 
-static input_states_t current_input_state = STATE_NO_INPUT;
-static nrf_pwm_values_individual_t seq_values;
 
 static volatile int8_t pwm_step = PWM_STEP;
+
+static input_states_t current_input_state = STATE_NO_INPUT;
 static volatile bool should_change_color = false;
 static volatile bool should_save_data = false;
+
 static nrfx_systick_state_t change_color_speed_timer;
 APP_TIMER_DEF(led1_blink_timer);
-
-
-static nrf_pwm_sequence_t sequence = {
-    .values.p_individual = &seq_values,
-    .length = NRF_PWM_VALUES_LENGTH(seq_values),
-    .repeats = 0,
-    .end_delay = 0
-};
 
 
 void click_handler(uint8_t clicks_count) {
@@ -68,12 +63,14 @@ void click_handler(uint8_t clicks_count) {
             case STATE_SATURATION_MODIFICATION:
                 current_input_state = STATE_BRIGHTNESS_MODIFICATION;
                 app_timer_stop(led1_blink_timer);
-                seq_values.channel_3 = PWM_TOP_VALUE;
+
+                set_led1_brightness(PWM_TOP_VALUE);
                 break;
             case STATE_BRIGHTNESS_MODIFICATION:
                 current_input_state = STATE_NO_INPUT;
                 should_save_data = true;
-                seq_values.channel_3 = 0;
+
+                set_led1_brightness(0);
                 break;
         }
         
@@ -102,47 +99,37 @@ void init_board() {
 
 
 void led1_blink_timer_handler(void* p_context) {
-    if (seq_values.channel_3 + pwm_step > PWM_TOP_VALUE || seq_values.channel_3 + pwm_step < 0) {
+    uint16_t led1_brightness = get_led1_brightness();
+    if (led1_brightness + pwm_step > PWM_TOP_VALUE || led1_brightness  + pwm_step < 0) {
         pwm_step *= -1;
     }
-    seq_values.channel_3 += pwm_step;
+    set_led1_brightness(led1_brightness + pwm_step);
 }
 
 
 void main_loop() {
-    nrfx_pwm_t driver_instance = NRFX_PWM_INSTANCE(1);
-    nrfx_pwm_config_t pwm_conf = NRFX_PWM_DEFAULT_CONFIG;
-    pwm_conf.load_mode = NRF_PWM_LOAD_INDIVIDUAL;
-    pwm_conf.output_pins[0] = LED2_R;
-    pwm_conf.output_pins[1] = LED2_G;
-    pwm_conf.output_pins[2] = LED2_B;
-    pwm_conf.output_pins[3] = LED1;
-    pwm_conf.top_value = PWM_TOP_VALUE;
-    nrfx_pwm_init(&driver_instance, &pwm_conf, NULL);
-    nrfx_pwm_simple_playback(&driver_instance, &sequence, 1, NRFX_PWM_FLAG_LOOP);
-
+    nrfx_pwm_t driver_instance = pwm_control_init();
+    UNUSED_VARIABLE(driver_instance);
+    
     app_timer_create(&led1_blink_timer, APP_TIMER_MODE_REPEATED, led1_blink_timer_handler);
 
-    hsv_data_t hsv =  get_last_saved_or_default_hsv_data();
-    rgb_data_t rgb = get_rgb_from_hsv(&hsv);
-
-    seq_values.channel_0 = rgb.r;
-    seq_values.channel_1 = rgb.g;
-    seq_values.channel_2 = rgb.b;
-
     button_interrupt_init(BUTTON1_ID, click_handler, release_handler);
+
+    hsv_data_t hsv =  get_last_saved_or_default_hsv_data();
+    set_led2_color_by_hsv(&hsv);
 
     int8_t hue_step = HUE_STEP;
     int8_t saturation_step = SATURATION_STEP;
     int8_t value_step = VALUE_STEP;
 
     while (true) {
-        get_last_saved_or_default_hsv_data();
         if (current_input_state == STATE_NO_INPUT && should_save_data) {
             save_hsv_data(&hsv);
             should_save_data = false;
         }
-        else if (should_change_color && nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
+        else if (should_change_color && 
+                 nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
+
             switch (current_input_state) {
                 case STATE_HUE_MODIFICATION:
                     hsv.h = (hsv.h + hue_step) % 360;
@@ -162,10 +149,7 @@ void main_loop() {
                 case STATE_NO_INPUT:
                     break;
             }
-            rgb = get_rgb_from_hsv(&hsv);
-            seq_values.channel_0 = rgb.r;
-            seq_values.channel_1 = rgb.g;
-            seq_values.channel_2 = rgb.b;
+            set_led2_color_by_hsv(&hsv);
             nrfx_systick_get(&change_color_speed_timer);
         }
         LOG_BACKEND_USB_PROCESS();

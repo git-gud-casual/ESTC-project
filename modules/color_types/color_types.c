@@ -1,10 +1,8 @@
 #include "color_types.h"
 #include <math.h>
-#include <inttypes.h>
 
 #include "nrfx_nvmc.h"
 #include "nrf_dfu_types.h"
-#include "nrf_log.h"
 
 #define APP_DATA_ADDR (BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE)
 #define GET_ADDRESS_BY_OFFSET(offset) (APP_DATA_ADDR + offset)

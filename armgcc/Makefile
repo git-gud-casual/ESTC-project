@@ -67,6 +67,7 @@ SRC_FILES += \
   $(PROJ_DIR)/modules/led_control/led_control.c \
   $(PROJ_DIR)/modules/button_control/button_control.c \
   $(PROJ_DIR)/modules/color_types/color_types.c \
+  $(PROJ_DIR)/modules/led_color/led_color.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_nvmc.c \
 
 # Include folders common to all targets

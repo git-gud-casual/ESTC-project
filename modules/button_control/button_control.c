@@ -2,7 +2,6 @@
 #include "nrf_gpio.h"
 #include "app_timer.h"
 #include "nrfx_gpiote.h"
-#include "nrf_log.h"
 #include <inttypes.h>
 
 #define DEBOUNCING_TIMEOUT_MS 50
@@ -25,7 +24,6 @@ const static uint8_t buttons_array[BUTTONS_COUNT] = BUTTONS_ARRAY;
 
 static void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     if (!button_config_s.debounce_proccessing) {
-        NRF_LOG_INFO("Button toggled");
         button_config_s.debounce_proccessing = true;
         app_timer_start(debouncing_timer, APP_TIMER_TICKS(DEBOUNCING_TIMEOUT_MS), NULL);
     }
@@ -48,7 +46,6 @@ void button_interrupt_init(uint32_t button_id, click_handler_t click_handler, re
 
 static void debouncing_timer_handler(void* p_context) {
     if (button_pressed(button_config_s.button_id)) {
-        NRF_LOG_INFO("Button pressed");
         button_config_s.button_clicks_count += 1;
         app_timer_stop(clicks_count_timer);
         app_timer_start(clicks_count_timer, APP_TIMER_TICKS(CLICKS_COUNT_TIMEOUT_MS), NULL);
@@ -56,7 +53,6 @@ static void debouncing_timer_handler(void* p_context) {
         button_config_s.should_call_release_handler = false;
     }
     else if (button_config_s.release_handler != NULL) {
-        NRF_LOG_INFO("Button released");
         if (!(button_config_s.should_call_release_handler = button_config_s.click_count_timer_is_started)) {
             button_config_s.release_handler();
         }
@@ -65,7 +61,6 @@ static void debouncing_timer_handler(void* p_context) {
 }
 
 static void clicks_count_timer_handler(void* p_context) {
-    NRF_LOG_INFO("Clicks count: %" PRIu8, button_config_s.button_clicks_count);
     if (button_config_s.click_handler != NULL) {
         button_config_s.click_handler(button_config_s.button_clicks_count);
     }
