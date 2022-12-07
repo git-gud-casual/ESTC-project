@@ -1,10 +1,14 @@
 #include "color_types.h"
 #include <math.h>
+#include <inttypes.h>
 
 #include "nrfx_nvmc.h"
 #include "nrf_dfu_types.h"
 
-#define APP_DATA_ADDR (BOOTLOADER_ADDRESS - NRF_DFU_APP_DATA_AREA_SIZE)
+#include "nrf_log.h"
+
+#define BOOTLOADER_ADDR 0xE0000
+#define APP_DATA_ADDR (BOOTLOADER_ADDR - NRF_DFU_APP_DATA_AREA_SIZE)
 #define GET_ADDRESS_BY_OFFSET(offset) (APP_DATA_ADDR + offset)
 #define WORD_SIZE 4
 #define DEVICE_ID_LAST_DIGITS 77
@@ -77,9 +81,10 @@ hsv_data_t get_last_saved_or_default_hsv_data() {
     }
     else {
         hsv_data_t hsv;
-        for (uint32_t address = BOOTLOADER_ADDRESS - WORD_SIZE; address >= APP_DATA_ADDR; address -= WORD_SIZE) {
+        for (uint32_t address = BOOTLOADER_ADDR - WORD_SIZE; address >= APP_DATA_ADDR; address -= WORD_SIZE) {
             hsv = get_hsv_by_address(address);
             if (hsv._signature == SIGNATURE) {
+                NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address);
                 last_hsv_offset = address - APP_DATA_ADDR;
                 offset_defined = true;
                 return hsv;
@@ -93,7 +98,8 @@ void save_hsv_data(hsv_data_t* hsv) {
     hsv->_is_writeable = 1;
     if (offset_defined &&
         nrfx_nvmc_word_writable_check(last_hsv_offset + APP_DATA_ADDR, hsv->_value)) {
-
+        
+        NRF_LOG_INFO("Attempt to rewrite hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv->_value, GET_ADDRESS_BY_OFFSET(last_hsv_offset));
         hsv->_is_writeable = 0;
         write_hsv(hsv);
         return;
@@ -110,6 +116,7 @@ void save_hsv_data(hsv_data_t* hsv) {
         nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(last_hsv_offset));
     }
 
+    NRF_LOG_INFO("Attempt to write hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv->_value, GET_ADDRESS_BY_OFFSET(last_hsv_offset));
     write_hsv(hsv);
     offset_defined = true;
 }
