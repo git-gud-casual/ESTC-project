@@ -6,6 +6,7 @@ DFU_PACKAGE      := $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu
 
 SDK_ROOT ?= /home/user/esl-nsdk
 PROJ_DIR := ..
+ESTC_USB_CLI_ENABLED ?= 1
 
 $(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
   LINKER_SCRIPT  := linker_script.ld
@@ -68,7 +69,9 @@ SRC_FILES += \
   $(PROJ_DIR)/modules/button_control/button_control.c \
   $(PROJ_DIR)/modules/color_types/color_types.c \
   $(PROJ_DIR)/modules/led_color/led_color.c \
+  $(PROJ_DIR)/modules/cli/cli.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_nvmc.c \
+  $(PROJ_DIR)/modules/commands/commands.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -163,6 +166,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
+CFLAGS += -DESTC_USB_CLI_ENABLED=$(ESTC_USB_CLI_ENABLED)
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
