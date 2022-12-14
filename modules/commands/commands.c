@@ -162,6 +162,9 @@ static void add_rgb_color(char* args) {
     if (end_of_name == NULL) {
         end_of_name = strchr(name, '\0');
     }
+    else {
+        *end_of_name = '\0';
+    }
 
     ptrdiff_t name_length = end_of_name - name;
     if (name_length > COLOR_NAME_SIZE) {
@@ -185,10 +188,12 @@ static void list_colors(char* args) {
     size_t i = 0;
     rgb_data_with_name_t* colors_array = get_colors_array();
     char* unformatted_str = "\r\nColor name: %s";
-    char formatted_str[17 + COLOR_NAME_SIZE];
+    char formatted_str[16 + COLOR_NAME_SIZE];
     while (colors_array[i]._signature == RGB_DATA_WITH_NAME_SIGNATURE && i < COLORS_COUNT) {
-        sprintf(formatted_str, unformatted_str, colors_array[i].color_name);
-        cli_write(formatted_str, 17 + COLOR_NAME_SIZE);
+        if (colors_array[i]._is_correct) {
+            sprintf(formatted_str, unformatted_str, colors_array[i].color_name);
+            cli_write(formatted_str, 16 + strlen(colors_array[i].color_name) - 1);
+        }
         i++;
     }
     if (i == 0) {
@@ -209,9 +214,12 @@ static void add_current_color(char* args) {
     if (end_of_name == NULL) {
         end_of_name = strchr(name, '\0');
     }
+    else {
+        *end_of_name = '\0';
+    }
 
     ptrdiff_t name_length = end_of_name - name;
-    if (name_length > COLOR_NAME_SIZE) {
+    if (name_length > COLOR_NAME_SIZE - 1) {
         cli_write("\r\nColor name size can`t be bigger than 32", 41);
         return;
     }
@@ -238,6 +246,49 @@ static void apply_color(char* args) {
 
     ptrdiff_t name_length = end_of_name - name;
     rgb_data_with_name_t* colors_array = get_colors_array();
+    for (size_t i = 0; i < COLORS_COUNT; i++) {
+        if (strncmp(colors_array[i].color_name, name, name_length) == 0 && 
+            (name[name_length] == ' ' || name[name_length] == '\0') && 
+            strlen(name) >= strlen(colors_array[i].color_name) &&
+            colors_array[i]._is_correct && colors_array[i]._signature == RGB_DATA_WITH_NAME_SIGNATURE) 
+            {
+                
+                set_led2_color_by_rgb(&colors_array[i].rgb_data);
+                cli_write("\r\nColor set", 11);
+                return;
+            }
+    }
+    cli_write("\r\nColor doesn`t found", 21);
+}
+
+static void del_color(char* args) {
+    NRF_LOG_INFO("del_color args: %s", args);
+    if (get_args_count(args) != 1) {
+        cli_write("\r\nInvalid arguments", 19);
+        return;
+    }
+
+    char* name = get_begin_of_word(args, 0);
+    NRF_LOG_INFO("Color name %s", name);
+    char* end_of_name = strchr(name, ' ');
+    if (end_of_name == NULL) {
+        end_of_name = strchr(name, '\0');
+    }
+
+    ptrdiff_t name_length = end_of_name - name;
+    rgb_data_with_name_t* colors_array = get_colors_array();
+    for (size_t i = 0; i < COLORS_COUNT; i++) {
+        if (strncmp(colors_array[i].color_name, name, name_length) == 0 && 
+            (name[name_length] == ' ' || name[name_length] == '\0') && strlen(name) >= strlen(colors_array[i].color_name)) 
+            {
+                
+                delete_color_from_color_array(i);
+                save_colors_array();
+                cli_write("\r\nColor deleted", 11);
+                return;
+            }
+    }
+    cli_write("\r\nColor doesn`t found", 21);
 }
 
 
@@ -270,6 +321,10 @@ static cli_command_t commands[COMMANDS_COUNT] = {
     {
         .command = "apply_color",
         .handler = apply_color
+    },
+    {
+        .command = "del_color",
+        .handler = del_color
     }
 };
 

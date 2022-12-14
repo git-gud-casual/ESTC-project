@@ -34,7 +34,7 @@ rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 rgb_data_with_name_t new_rgb_with_name(uint8_t r, uint8_t g, uint8_t b, char* name, size_t name_length) {
-    rgb_data_with_name_t rgb_with_name = {.r = r, .g = g, .b = b, ._signature = RGB_DATA_WITH_NAME_SIGNATURE};
+    rgb_data_with_name_t rgb_with_name = {.rgb_data = {.r = r, .g = g, .b = b}, ._signature = RGB_DATA_WITH_NAME_SIGNATURE, ._is_correct = 1};
     strncpy(rgb_with_name.color_name, name, name_length);
     return rgb_with_name;
 }
@@ -93,15 +93,13 @@ static void set_colors_array(uint32_t address) {
 
 void put_rgb_with_name_in_color_array(rgb_data_with_name_t* rgb_data) {
     for (size_t i = 0; i < COLORS_COUNT; i++) {
-        if (colors_array[i]._signature != RGB_DATA_WITH_NAME_SIGNATURE) {
+        if (colors_array[i]._signature != RGB_DATA_WITH_NAME_SIGNATURE || !colors_array[i]._is_correct) {
             colors_array[i] = *rgb_data;
             NRF_LOG_INFO("Added color at index %d", i);
             return;
         }
         else if (strncmp(colors_array[i].color_name, rgb_data->color_name, COLOR_NAME_SIZE) == 0) {
-            colors_array[i].r = rgb_data->r;
-            colors_array[i].g = rgb_data->g;
-            colors_array[i].b = rgb_data->b;
+            colors_array[i].rgb_data = rgb_data->rgb_data;
             NRF_LOG_INFO("Changed color %s at index %d", colors_array[i].color_name, i);
             return;
         }
@@ -115,6 +113,26 @@ void put_rgb_with_name_in_color_array(rgb_data_with_name_t* rgb_data) {
 
     memcpy(colors_array, new_colors_array, COLORS_ARRAY_SIZE);
     NRF_LOG_INFO("Added value at end")
+}
+
+void delete_color_from_color_array(size_t color_index) {
+    rgb_data_with_name_t new_colors_array[COLORS_COUNT] = {.0};
+    bool is_deleted = false;
+    for (size_t i = 0; i < COLORS_COUNT; i++) {
+        if (i == color_index) {
+            is_deleted = true;
+        }
+        else {
+            new_colors_array[is_deleted? i - 1 : i] = colors_array[i]; 
+        }
+    }
+    if (new_colors_array[0]._signature != RGB_DATA_WITH_NAME_SIGNATURE) {
+        rgb_data_with_name_t rgb = new_rgb_with_name(0, 0, 0, "", 0);
+        rgb._is_correct = 0;
+        new_colors_array[0] = rgb;
+    }
+    memcpy(colors_array, new_colors_array, COLORS_ARRAY_SIZE);
+    NRF_LOG_INFO("Deleted color")
 }
 
 static void write_color_array() {

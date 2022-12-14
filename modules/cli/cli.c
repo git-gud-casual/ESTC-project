@@ -1,6 +1,7 @@
 #include "cli.h"
 #include "nrf_log.h"
 #include <string.h>
+#include <inttypes.h>
 
 #define CDC_ACM_COMM_INTERFACE  2
 #define CDC_ACM_COMM_EPIN       NRF_DRV_USBD_EPIN3
@@ -52,7 +53,6 @@ void cli_process() {
     while (app_usbd_event_queue_process());
 }
 
-#include <inttypes.h>
 static bool is_writing;
 void cli_write(const char* buff, size_t count) {
     is_writing = true;
@@ -138,9 +138,11 @@ static void usb_ev_handler(app_usbd_class_inst_t const * p_inst,
                                         READ_SIZE);
         } while (ret == NRF_SUCCESS);
 
-        ret = app_usbd_cdc_acm_write(&usb_cdc_acm,
-                                    line_buff_s.buff + offset,
-                                    line_buff_s.current_index - offset);
+        if (line_buff_s.current_index > offset) {
+            ret = app_usbd_cdc_acm_write(&usb_cdc_acm,
+                                        line_buff_s.buff + offset,
+                                        line_buff_s.current_index - offset);
+        }
 
         if (is_newline) {
             memcpy(line_copy, line_buff_s.buff, LINE_BUFFER_SIZE);
