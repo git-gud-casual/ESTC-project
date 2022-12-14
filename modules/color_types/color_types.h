@@ -2,6 +2,14 @@
 #define _COLOR_TYPES
 
 #include <stdint.h>
+#include <stddef.h>
+
+#define COLOR_NAME_SIZE 32
+#define COLORS_COUNT 10
+#define RGB_DATA_WITH_NAME_SIGNATURE 0b01011010
+
+// RGB_DATA_WITH_NAME_SIZE should be multiple of 4
+#define RGB_DATA_WITH_NAME_SIZE (COLOR_NAME_SIZE + 4)
 
 typedef union {
     uint32_t _value;
@@ -21,11 +29,27 @@ typedef struct {
     uint8_t b;
 } rgb_data_t;
 
+typedef union {
+    uint32_t _value[RGB_DATA_WITH_NAME_SIZE / 4];
+    
+    struct {
+        uint8_t _signature;
+        char color_name[COLOR_NAME_SIZE];
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+    };
+
+} rgb_data_with_name_t;
+
 rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b);
 hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v);
 rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data);
-hsv_data_t get_last_saved_or_default_hsv_data();
-void save_hsv_data(hsv_data_t* hsv);
+rgb_data_with_name_t* get_colors_array();
+rgb_data_with_name_t new_rgb_with_name(uint8_t r, uint8_t g, uint8_t b, char* name, size_t name_length);
+void init_last_saved_colors_array();
+void save_colors_array();
+void put_rgb_with_name_in_color_array();
 void init_nmvc();
 
 

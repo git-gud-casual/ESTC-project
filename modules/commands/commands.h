@@ -2,6 +2,7 @@
 #define _COMMANDS_MODULE
 
 #include <stdlib.h>
+#include <inttypes.h>
 
 #include "nrf_log.h"
 
@@ -10,7 +11,7 @@
 #include "../led_color/led_color.h"
 
 
-#define COMMANDS_COUNT 3
+#define COMMANDS_COUNT 8
 
 void commands_init();
 void commands_cli_listener(char* line);
