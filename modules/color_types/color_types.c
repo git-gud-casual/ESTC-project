@@ -96,7 +96,7 @@ hsv_data_t get_hsv_from_rgb(const rgb_data_t* rgb_data) {
         if (r == max) {
             h = 60 * fmod(fabs((g - b) / delta), 6.);
         } else if (g == max) {
-            h = 60 * (fabs((b - g) / delta) + 2);
+            h = 60 * (fabs((b - r) / delta) + 2);
         }
 
         if (b == max) {
