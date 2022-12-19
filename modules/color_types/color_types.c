@@ -12,30 +12,31 @@
 #define APP_DATA_ADDR (BOOTLOADER_ADDR - NRF_DFU_APP_DATA_AREA_SIZE)
 #define GET_ADDRESS_BY_OFFSET(offset) (APP_DATA_ADDR + offset)
 #define WORD_SIZE 4
-#define COLORS_ARRAY_SIZE (COLORS_COUNT * RGB_DATA_WITH_NAME_SIZE)
+#define RGB_DATA_ARRAY_SIZE (RGB_DATA_ARRAY_SIZE_IN_WORDS * WORD_SIZE)
 #define DEVICE_ID_LAST_DIGITS 77
-#define SIGNATURE 0b00101
+#define HSV_DATA_SIGNATURE 0b001011
+#define RGB_DATA_ARRAY_SIGNATURE 0b01011011
+
+#define GET_MAX(a, b) (((a) > (b))? (a) : (b))
+#define GET_MIN(a, b) (((a) > (b))? (b) : (a))
 
 static bool offset_defined = false;
-static uint32_t last_colors_array_offset;
+static uint32_t mem_offset;
 
-static rgb_data_with_name_t colors_array[COLORS_COUNT] = {.0};
-
-rgb_data_with_name_t* get_colors_array() {
-    return &colors_array[0];
-}
 
 hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v) {
-    return (hsv_data_t) {.h = h, .s = s, .v = v, ._signature = SIGNATURE};
+    return (hsv_data_t) {.h = h, .s = s, .v = v, ._signature = HSV_DATA_SIGNATURE};
 }
 
 rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b) {
     return (rgb_data_t) {.r = r, .g = g, .b = b};
 }
 
-rgb_data_with_name_t new_rgb_with_name(uint8_t r, uint8_t g, uint8_t b, char* name, size_t name_length) {
-    rgb_data_with_name_t rgb_with_name = {.rgb_data = {.r = r, .g = g, .b = b}, ._signature = RGB_DATA_WITH_NAME_SIGNATURE, ._is_correct = 1};
-    strncpy(rgb_with_name.color_name, name, name_length);
+rgb_data_with_name_t new_rgb_with_name(rgb_data_t rgb, char* color_name, size_t name_length) {
+    ASSERT(name_length <= COLOR_NAME_SIZE);
+
+    rgb_data_with_name_t rgb_with_name = {.rgb = rgb};
+    strncpy(rgb_with_name.color_name, color_name, name_length);
     return rgb_with_name;
 }
 
@@ -78,116 +79,190 @@ rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data) {
     return new_rgb((r_component + m) * 255, (g_component + m) * 255, (b_component + m) * 255);
 }
 
+hsv_data_t get_hsv_from_rgb(const rgb_data_t* rgb_data) {
+    float r = (float) rgb_data->r / 255;
+    float g = (float) rgb_data->g / 255;
+    float b = (float) rgb_data->b / 255;
 
-static rgb_data_with_name_t get_rgb_data_with_name_by_address(uint32_t address) {
-    rgb_data_with_name_t rgb_data;
-    memcpy(&rgb_data, (uint32_t*) address, RGB_DATA_WITH_NAME_SIZE);
-    return rgb_data;
+    float max, min, delta;
+    max = GET_MAX(GET_MAX(r, g), b);
+    min = GET_MIN(GET_MIN(r, g), b);
+    delta = max - min;
+
+    float h = 0;
+    if (delta == 0) {
+        h = 0;
+    } else {
+        if (r == max) {
+            h = 60 * fmod(fabs((g - b) / delta), 6.);
+        } else if (g == max) {
+            h = 60 * (fabs((b - g) / delta) + 2);
+        }
+
+        if (b == max) {
+            h = 60 * (fabs((r - g) / delta) + 4);
+        }
+    }
+
+    float s = max == 0 ? 0 : delta / max * 100;
+    float v = max * 100;
+
+    return new_hsv((uint16_t) ceilf(h) % 360, (uint8_t) ceilf(s) % 101, (uint8_t) ceilf(v) % 101);
+
 }
 
-static void set_colors_array(uint32_t address) {
-    rgb_data_with_name_t* rgb_array = (rgb_data_with_name_t*) address;
-    memcpy(colors_array, rgb_array, COLORS_ARRAY_SIZE);
-}
 
-
-void put_rgb_with_name_in_color_array(rgb_data_with_name_t* rgb_data) {
+void put_rgb_in_array(rgb_data_array_t* rgb_array, rgb_data_with_name_t* rgb_data) {
     for (size_t i = 0; i < COLORS_COUNT; i++) {
-        if (colors_array[i]._signature != RGB_DATA_WITH_NAME_SIGNATURE || !colors_array[i]._is_correct) {
-            colors_array[i] = *rgb_data;
-            NRF_LOG_INFO("Added color at index %d", i);
-            return;
-        }
-        else if (strncmp(colors_array[i].color_name, rgb_data->color_name, COLOR_NAME_SIZE) == 0) {
-            colors_array[i].rgb_data = rgb_data->rgb_data;
-            NRF_LOG_INFO("Changed color %s at index %d", colors_array[i].color_name, i);
+        if (strncmp(rgb_array->colors_array[i].color_name, rgb_data->color_name, COLOR_NAME_SIZE) == 0) {
+            rgb_array->colors_array[i].rgb = rgb_data->rgb;
+            NRF_LOG_INFO("Changed color %s at index %d", rgb_data->color_name, i);
             return;
         }
     }
 
-    rgb_data_with_name_t new_colors_array[COLORS_COUNT] = {.0};
-    for (size_t i = 1; i < COLORS_COUNT; i++) {
-        new_colors_array[i - 1] = colors_array[i];
+    if (rgb_array->count >= COLORS_COUNT) {
+        for (size_t i = 1; i < COLORS_COUNT; i++) {
+            rgb_array->colors_array[i - 1] = rgb_array->colors_array[i];
+        }
+        rgb_array->count--;
     }
-    new_colors_array[COLORS_COUNT - 1] = *rgb_data;
+    rgb_array->colors_array[rgb_array->count] = *rgb_data;
+    rgb_array->count++;
 
-    memcpy(colors_array, new_colors_array, COLORS_ARRAY_SIZE);
-    NRF_LOG_INFO("Added value at end")
+    NRF_LOG_INFO("Added rgb_data at rgb_array. Colors count %" PRIu32, rgb_array->count);
 }
 
-void delete_color_from_color_array(size_t color_index) {
-    rgb_data_with_name_t new_colors_array[COLORS_COUNT] = {.0};
+void delete_color_from_array(rgb_data_array_t* rgb_array, size_t color_index) {
     bool is_deleted = false;
-    for (size_t i = 0; i < COLORS_COUNT; i++) {
+    for (size_t i = 0; i < rgb_array->count; i++) {
         if (i == color_index) {
             is_deleted = true;
         }
-        else {
-            new_colors_array[is_deleted? i - 1 : i] = colors_array[i]; 
+        else if (is_deleted) {
+            rgb_array->colors_array[i - 1] = rgb_array->colors_array[i];
         }
     }
-    if (new_colors_array[0]._signature != RGB_DATA_WITH_NAME_SIGNATURE) {
-        rgb_data_with_name_t rgb = new_rgb_with_name(0, 0, 0, "", 0);
-        rgb._is_correct = 0;
-        new_colors_array[0] = rgb;
+    
+    if (is_deleted) {
+        rgb_array->count--;
     }
-    memcpy(colors_array, new_colors_array, COLORS_ARRAY_SIZE);
-    NRF_LOG_INFO("Deleted color")
+
+    NRF_LOG_INFO("Deleted color");
 }
 
-static void write_color_array() {
+static rgb_data_array_t get_rgb_array_by_address(uint32_t address) {
+    rgb_data_array_t rgb_data;
+    memcpy(&rgb_data, (uint32_t*) address, RGB_DATA_ARRAY_SIZE);
+    return rgb_data;
+}
+
+rgb_data_array_t get_last_saved_rgb_array() {
     if (offset_defined) {
-        for (size_t i = 0; i < COLORS_COUNT; i++) {
-            for (size_t j = 0; j < RGB_DATA_WITH_NAME_SIZE / 4; j++) {
-                if (last_colors_array_offset % CODE_PAGE_SIZE == 0) {
-                    nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(last_colors_array_offset));
-                }
-                nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(last_colors_array_offset), colors_array[i]._value[j]);
-                while (!nrfx_nvmc_write_done_check());
-                last_colors_array_offset += 4;
-            }
-        }
-        last_colors_array_offset -= COLORS_ARRAY_SIZE - 4;
-        NRF_LOG_INFO("Data has been written");
+        return get_rgb_array_by_address(GET_ADDRESS_BY_OFFSET(mem_offset));
     }
-}
 
-void init_last_saved_colors_array() {
-    rgb_data_with_name_t rgb_data;
-    for (uint32_t address = APP_DATA_ADDR; address <= BOOTLOADER_ADDR - COLORS_ARRAY_SIZE; address += COLORS_ARRAY_SIZE) {
-        rgb_data = get_rgb_data_with_name_by_address(address);
-        NRF_LOG_INFO("rgb_data_with_name_t address is 0x%" PRIx32, address);
-        NRF_LOG_INFO("rgb_data_with_name_t signature is 0x%" PRIx8, rgb_data._signature);
-        if (rgb_data._signature != RGB_DATA_WITH_NAME_SIGNATURE) {
+    rgb_data_array_t* rgb_array_ptr;
+    for (uint32_t address = APP_DATA_ADDR + CODE_PAGE_SIZE; address <= BOOTLOADER_ADDR - RGB_DATA_ARRAY_SIZE; address += RGB_DATA_ARRAY_SIZE) {
+        rgb_array_ptr = (rgb_data_array_t*) address;
+        NRF_LOG_INFO("rgb_data_array_t address is 0x%" PRIx32, address);
+        NRF_LOG_INFO("rgb_data_array_t signature is 0x%" PRIx8, rgb_array_ptr->_signature);
+
+        if (rgb_array_ptr->_signature != RGB_DATA_ARRAY_SIGNATURE) {
             NRF_LOG_INFO("Found invalid data at address 0x%" PRIx32, address);
-            if (address == APP_DATA_ADDR) {
-                return;
+            if (address == APP_DATA_ADDR + CODE_PAGE_SIZE) {
+                break;
             }
 
-            set_colors_array(address - COLORS_ARRAY_SIZE);
-            NRF_LOG_INFO("Found rgb_data_with_name_t at address 0x%" PRIx32, address - COLORS_ARRAY_SIZE);
-            last_colors_array_offset = address - APP_DATA_ADDR - COLORS_ARRAY_SIZE;
+            NRF_LOG_INFO("Found rgb_data_array_t at address 0x%" PRIx32, address - RGB_DATA_ARRAY_SIZE);
+            mem_offset = address - APP_DATA_ADDR - RGB_DATA_ARRAY_SIZE;
             offset_defined = true;
                 
-            return;
+            
+            return get_rgb_array_by_address(GET_ADDRESS_BY_OFFSET(mem_offset));
         }
     }
+
+    return (rgb_data_array_t) {._signature = RGB_DATA_ARRAY_SIGNATURE, .count = 0};
 }
 
-void save_colors_array() {
-    if (!offset_defined) {
-        last_colors_array_offset = 0;
+void save_colors_array(rgb_data_array_t* rgb_data_array) {
+    if (!offset_defined || GET_ADDRESS_BY_OFFSET(mem_offset + RGB_DATA_ARRAY_SIZE) > BOOTLOADER_ADDR) {
+        mem_offset = CODE_PAGE_SIZE;
         offset_defined = true;
     }
     else {
-        last_colors_array_offset = (last_colors_array_offset + COLORS_ARRAY_SIZE) % NRF_DFU_APP_DATA_AREA_SIZE;
+        mem_offset += RGB_DATA_ARRAY_SIZE;
     }
 
-    NRF_LOG_INFO("Attempt to write colors_array at address 0x%" PRIx32, GET_ADDRESS_BY_OFFSET(last_colors_array_offset));
-    write_color_array();
+    NRF_LOG_INFO("Attempt to write colors_array at address 0x%" PRIx32, GET_ADDRESS_BY_OFFSET(mem_offset));
+    for (size_t i = 0; i < RGB_DATA_ARRAY_SIZE_IN_WORDS; i++) {
+        if (mem_offset % CODE_PAGE_SIZE == 0) {
+            nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(mem_offset));
+        }
+
+        nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(mem_offset), rgb_data_array->_value[i]);
+        while (!nrfx_nvmc_write_done_check());
+
+        mem_offset += WORD_SIZE;
+    }
+    mem_offset -= RGB_DATA_ARRAY_SIZE;
+    NRF_LOG_INFO("Colors array wrote at address 0x%" PRIx32, GET_ADDRESS_BY_OFFSET(mem_offset));
+}
+
+static uint32_t hsv_offset = 0;
+static bool hsv_offset_defined = false;
+
+hsv_data_t get_last_saved_hsv_data() {
+    if (offset_defined) {
+        hsv_data_t hsv;
+        memcpy(&hsv, (void*) GET_ADDRESS_BY_OFFSET(hsv_offset), WORD_SIZE);
+        return hsv;
+    }
+
+    for (uint32_t address = APP_DATA_ADDR; address <= GET_ADDRESS_BY_OFFSET(CODE_PAGE_SIZE) - WORD_SIZE; address += WORD_SIZE) {
+        hsv_data_t* hsv_ptr = (hsv_data_t*) address;
+        NRF_LOG_INFO("hsv_data_t address is 0x%" PRIx32, address);
+
+        if (hsv_ptr->_signature != HSV_DATA_SIGNATURE) {
+            NRF_LOG_INFO("Found invalid data at address 0x%" PRIx32, address);
+            if (address == APP_DATA_ADDR) {
+                break;
+            }
+
+            
+            hsv_offset = address - APP_DATA_ADDR - WORD_SIZE;
+            hsv_offset_defined = true;
+
+            hsv_data_t hsv;
+            memcpy(&hsv, (void*) GET_ADDRESS_BY_OFFSET(hsv_offset), WORD_SIZE);
+            NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address - WORD_SIZE);
+            
+            return hsv;
+        }
+    }
+    return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
+}
+
+void write_hsv_data(hsv_data_t* hsv_ptr) {
+    if (!hsv_offset_defined) {
+        hsv_offset = 0;
+        hsv_offset_defined = true;
+    }
+    else {
+        hsv_offset = (hsv_offset + WORD_SIZE) % CODE_PAGE_SIZE;
+    }
+
+    if (hsv_offset % CODE_PAGE_SIZE == 0) {
+        nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(hsv_offset));
+    }
+
+    NRF_LOG_INFO("Attempt to write hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv_ptr->_value, GET_ADDRESS_BY_OFFSET(hsv_offset));
+    nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(hsv_offset), hsv_ptr->_value);
+    while(!nrfx_nvmc_write_done_check());
 }
 
 
 void init_nmvc() {
-    init_last_saved_colors_array();
+    get_last_saved_rgb_array();
 }

@@ -35,10 +35,18 @@ nrfx_pwm_t pwm_control_init() {
     return driver_instance;
 }
 
+static hsv_data_t current_color = {.0};
+
+hsv_data_t get_current_color() {
+    return current_color;
+}
+
 void set_led2_color_by_rgb(const rgb_data_t* rgb) {
     *led_values_pointers_s.led2_red = rgb->r;
     *led_values_pointers_s.led2_blue = rgb->b;
     *led_values_pointers_s.led2_green = rgb->g;
+
+    current_color = get_hsv_from_rgb(rgb);
 }
 
 void set_led2_color_by_hsv(const hsv_data_t* hsv) {

@@ -1,15 +1,17 @@
 #include "commands.h"
 
-
 typedef void (*command_handler)(char* args);
 
 typedef struct {
     const char* command;
     command_handler handler;
+    const char* help_str;
 } cli_command_t;
 
-static rgb_data_t current_color = {.0};
 
+static void send_msg_to_cli(const char* msg) {
+    cli_write(msg, strlen(msg));
+}
 
 static char* get_begin_of_word(char* str, size_t word_pos) {
     bool was_space = true;
@@ -73,21 +75,10 @@ static get_uint_ret_t get_uint_from_str(char* str, size_t uint_pos) {
     return (get_uint_ret_t) {value, true};
 }
 
-
-static void help_handler(char* args) {
-    NRF_LOG_INFO("Help args: %s", args);
-    if (get_args_count(args) > 0) {
-        cli_write("\r\nCommand help doesn`t accept any arguments", 43);
-        return;
-    }
-    cli_write("\r\nRGB <r> <g> <b> - set led2 color by RGB model"
-              "\r\nHSV <h> <s> <v> - set led2 color by HSV model", 94);
-}
-
 static void rgb_handler(char* args) {
     NRF_LOG_INFO("RGB args: %s", args);
     if (get_args_count(args) != 3) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -97,22 +88,21 @@ static void rgb_handler(char* args) {
     for (size_t i = 0; i < 3; i++) {
         ret = get_uint_from_str(args, i);
         if (ret.error || ret.value > 255) {
-            cli_write("\r\nInvalid arguments", 19);
+            send_msg_to_cli(INVALID_ARGUMENTS_MSG);
             return;
         }
         rgb_vals[i] = ret.value;
     }
 
     rgb_data_t rgb = new_rgb(rgb_vals[0], rgb_vals[1], rgb_vals[2]);
-    current_color = rgb;
     set_led2_color_by_rgb(&rgb);
-    cli_write("\r\nColor set", 11);
+    send_msg_to_cli(COLOR_SET_MSG);
 }
 
 static void hsv_handler(char* args) {
     NRF_LOG_INFO("HSV args: %s", args);
     if (get_args_count(args) != 3) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -124,7 +114,7 @@ static void hsv_handler(char* args) {
         if (ret.error || (i == 0 && ret.value > 359) ||
             (i > 0 && ret.value > 100)) 
         {
-            cli_write("\r\nInvalid arguments", 19);
+            send_msg_to_cli(INVALID_ARGUMENTS_MSG);
             return;
         }
         hsv_vals[i] = ret.value;
@@ -132,15 +122,14 @@ static void hsv_handler(char* args) {
 
     hsv_data_t hsv = new_hsv(hsv_vals[0], hsv_vals[1], hsv_vals[2]);
     rgb_data_t rgb = get_rgb_from_hsv(&hsv);
-    current_color = rgb;
     set_led2_color_by_rgb(&rgb);
-    cli_write("\r\nColor set", 11);
+    send_msg_to_cli(COLOR_SET_MSG);
 }
 
 static void add_rgb_color(char* args) {
     NRF_LOG_INFO("add_rgb_color args %s: ", args);
     if (get_args_count(args) != 4) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -150,7 +139,7 @@ static void add_rgb_color(char* args) {
     for (size_t i = 0; i < 3; i++) {
         ret = get_uint_from_str(args, i);
         if (ret.error || ret.value > 255) {
-            cli_write("\r\nInvalid arguments", 19);
+            send_msg_to_cli(INVALID_ARGUMENTS_MSG);
             return;
         }
         rgb_vals[i] = ret.value;
@@ -168,43 +157,43 @@ static void add_rgb_color(char* args) {
 
     ptrdiff_t name_length = end_of_name - name;
     if (name_length > COLOR_NAME_SIZE) {
-        cli_write("\r\nColor name size can`t be bigger than 32", 41);
+        send_msg_to_cli(COLOR_NAME_EXCEEDS_SIZE);
         return;
     }
 
-    rgb_data_with_name_t rgb_data = new_rgb_with_name(rgb_vals[0], rgb_vals[1], rgb_vals[2], name, name_length);
-    put_rgb_with_name_in_color_array(&rgb_data);
-    save_colors_array();
-    cli_write("\r\nColor saved", 13);
+    rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    rgb_data_with_name_t rgb_data = new_rgb_with_name(new_rgb(rgb_vals[0], rgb_vals[1], rgb_vals[2]), name, name_length);
+    put_rgb_in_array(&rgb_array, &rgb_data);
+    save_colors_array(&rgb_array);
+    send_msg_to_cli(COLOR_SAVED_MSG);
 }
 
 static void list_colors(char* args) {
     NRF_LOG_INFO("list_colors args: %s", args);
     if (get_args_count(args) > 0) {
-        cli_write("\r\nCommand list_colors doesn`t accept any arguments", 50);
+        send_msg_to_cli(COMMAND_DOESNT_ACCEPT_ARGS_MSG);
         return;
     }
 
-    size_t i = 0;
-    rgb_data_with_name_t* colors_array = get_colors_array();
-    char* unformatted_str = "\r\nColor name: %s";
-    char formatted_str[16 + COLOR_NAME_SIZE];
-    while (colors_array[i]._signature == RGB_DATA_WITH_NAME_SIGNATURE && i < COLORS_COUNT) {
-        if (colors_array[i]._is_correct) {
-            sprintf(formatted_str, unformatted_str, colors_array[i].color_name);
-            cli_write(formatted_str, 16 + strlen(colors_array[i].color_name) - 1);
-        }
-        i++;
+    rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    NRF_LOG_INFO("Colors count %" PRIu32, rgb_array.count);
+    if (rgb_array.count == 0) {
+        send_msg_to_cli(CANT_FIND_ANY_SAVED_COLORS_MSG);
+        return;
     }
-    if (i == 0) {
-        cli_write("\r\nCan`t find any saved colors", 29);
+
+    char* unformatted_str = "\r\nColor name: %s";
+    char formatted_str[strlen(unformatted_str) + COLOR_NAME_SIZE];
+    for (size_t i = 0; i < rgb_array.count; i++) {
+        sprintf(formatted_str, unformatted_str, rgb_array.colors_array[i].color_name);
+        cli_write(formatted_str, strlen(unformatted_str) + strlen(rgb_array.colors_array[i].color_name) - 1);
     }
 }
 
 static void add_current_color(char* args) {
     NRF_LOG_INFO("add_current_color args: %s", args);
     if (get_args_count(args) != 1) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -220,20 +209,23 @@ static void add_current_color(char* args) {
 
     ptrdiff_t name_length = end_of_name - name;
     if (name_length > COLOR_NAME_SIZE - 1) {
-        cli_write("\r\nColor name size can`t be bigger than 32", 41);
+        send_msg_to_cli(COLOR_NAME_EXCEEDS_SIZE);
         return;
     }
 
-    rgb_data_with_name_t rgb_data = new_rgb_with_name(current_color.r, current_color.g, current_color.b, name, name_length);
-    put_rgb_with_name_in_color_array(&rgb_data);
-    save_colors_array();
-    cli_write("\r\nColor saved", 13);
+    rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    hsv_data_t hsv_color = get_current_color();
+
+    rgb_data_with_name_t rgb_data = new_rgb_with_name(get_rgb_from_hsv(&hsv_color), name, name_length);
+    put_rgb_in_array(&rgb_array, &rgb_data);
+    save_colors_array(&rgb_array);
+    send_msg_to_cli(COLOR_SAVED_MSG);
 }
 
 static void apply_color(char* args) {
     NRF_LOG_INFO("apply_color args: %s", args);
     if (get_args_count(args) != 1) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -245,26 +237,25 @@ static void apply_color(char* args) {
     }
 
     ptrdiff_t name_length = end_of_name - name;
-    rgb_data_with_name_t* colors_array = get_colors_array();
-    for (size_t i = 0; i < COLORS_COUNT; i++) {
-        if (strncmp(colors_array[i].color_name, name, name_length) == 0 && 
+    rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    for (size_t i = 0; i < rgb_array.count; i++) {
+        if (strncmp(rgb_array.colors_array[i].color_name, name, name_length) == 0 && 
             (name[name_length] == ' ' || name[name_length] == '\0') && 
-            strlen(name) >= strlen(colors_array[i].color_name) &&
-            colors_array[i]._is_correct && colors_array[i]._signature == RGB_DATA_WITH_NAME_SIGNATURE) 
+            strlen(name) >= strlen(rgb_array.colors_array[i].color_name)) 
             {
                 
-                set_led2_color_by_rgb(&colors_array[i].rgb_data);
-                cli_write("\r\nColor set", 11);
+                set_led2_color_by_rgb(&rgb_array.colors_array[i].rgb);
+                send_msg_to_cli(COLOR_SET_MSG);
                 return;
             }
     }
-    cli_write("\r\nColor doesn`t found", 21);
+    send_msg_to_cli(COLOR_DOESNT_FOUND_MSG);
 }
 
 static void del_color(char* args) {
     NRF_LOG_INFO("del_color args: %s", args);
     if (get_args_count(args) != 1) {
-        cli_write("\r\nInvalid arguments", 19);
+        send_msg_to_cli(INVALID_ARGUMENTS_MSG);
         return;
     }
 
@@ -276,57 +267,77 @@ static void del_color(char* args) {
     }
 
     ptrdiff_t name_length = end_of_name - name;
-    rgb_data_with_name_t* colors_array = get_colors_array();
-    for (size_t i = 0; i < COLORS_COUNT; i++) {
-        if (strncmp(colors_array[i].color_name, name, name_length) == 0 && 
-            (name[name_length] == ' ' || name[name_length] == '\0') && strlen(name) >= strlen(colors_array[i].color_name)) 
+    rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    for (size_t i = 0; i < rgb_array.count; i++) {
+        if (strncmp(rgb_array.colors_array[i].color_name, name, name_length) == 0 && 
+            (name[name_length] == ' ' || name[name_length] == '\0') && strlen(name) >= strlen(rgb_array.colors_array[i].color_name)) 
             {
-                
-                delete_color_from_color_array(i);
-                save_colors_array();
-                cli_write("\r\nColor deleted", 11);
+                delete_color_from_array(&rgb_array, i);
+                save_colors_array(&rgb_array);
+                send_msg_to_cli(COLOR_DELETED_MSG);
                 return;
             }
     }
-    cli_write("\r\nColor doesn`t found", 21);
+    send_msg_to_cli(COLOR_DOESNT_FOUND_MSG);
 }
 
-
+static void help_handler(char* args);
 
 static cli_command_t commands[COMMANDS_COUNT] = {
     {
-        .command = "help",
-        .handler = help_handler
+        .command = HELP_COMMAND_NAME,
+        .handler = help_handler,
+        .help_str = HELP_HELP_MSG
     },
     {
-        .command = "RGB",
-        .handler = rgb_handler
+        .command = RGB_COMMAND_NAME,
+        .handler = rgb_handler,
+        .help_str = RGB_HELP_MSG
     },
     {
-        .command = "HSV",
-        .handler = hsv_handler
+        .command = HSV_COMMAND_NAME,
+        .handler = hsv_handler,
+        .help_str = HSV_HELP_MSG
     },
     {
-        .command = "add_rgb_color",
-        .handler = add_rgb_color
+        .command = ADD_RGB_COMMAND_NAME,
+        .handler = add_rgb_color,
+        .help_str = ADD_RGB_HELP_MSG
     },
     {
-        .command = "list_colors",
-        .handler = list_colors
+        .command = LIST_COLORS_COMMAND_NAME,
+        .handler = list_colors,
+        .help_str = LIST_COLORS_HELP_MSG
     },
     {
-        .command = "add_current_color",
-        .handler = add_current_color
+        .command = ADD_CURRENT_COLOR_COMMAND_NAME,
+        .handler = add_current_color,
+        .help_str = ADD_CURRENT_COLOR_HELP_MSG
     },
     {
-        .command = "apply_color",
-        .handler = apply_color
+        .command = APPLY_COLOR_COMMAND_NAME,
+        .handler = apply_color,
+        .help_str = APPLY_COLOR_HELP_MSG
     },
     {
-        .command = "del_color",
-        .handler = del_color
+        .command = DEL_COLOR_COMMAND_NAME,
+        .handler = del_color,
+        .help_str = DEL_COLOR_HELP_MSG
     }
 };
+
+
+static void help_handler(char* args) {
+    NRF_LOG_INFO("Help args: %s", args);
+    if (get_args_count(args) > 0) {
+        send_msg_to_cli(COMMAND_DOESNT_ACCEPT_ARGS_MSG);
+        return;
+    }
+    
+    for (size_t i = 0; i < COMMANDS_COUNT; i++) {
+        send_msg_to_cli(commands[i].help_str);
+    }
+}
 
 static char* command;
 void commands_cli_listener(char* line) {
@@ -347,7 +358,7 @@ static void parse_command() {
             return;
         }
     }
-    cli_write("\r\nUnknown command", 17);
+    cli_write(UNKNOWN_COMMAND_MSG, strlen(UNKNOWN_COMMAND_MSG));
 }
 
 void commands_process() {
