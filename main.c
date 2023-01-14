@@ -3,10 +3,13 @@
 #include <inttypes.h>
 
 
-#include "modules/led_control/led_control.h"
+#if ESTC_USB_CLI_ENABLED == 1
+    #include "modules/cli/cli.h"
+    #include "modules/commands/commands.h"
+#endif
+
 #include "modules/button_control/button_control.h"
-#include "modules/color_types/color_types.h"
-#include "modules/led_color/led_color.h"
+
 
 #include "nrfx_pwm.h"
 #include "app_timer.h"
@@ -16,7 +19,6 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
-
 
 #define HUE_MODIFICATION_LED1_BLINK_TIME_MS 10
 #define SATURATION_MODIFICATION_LED1_BLINK_TIME_MS 1
@@ -46,9 +48,11 @@ static volatile bool should_save_data = false;
 static nrfx_systick_state_t change_color_speed_timer;
 APP_TIMER_DEF(led1_blink_timer);
 
+static hsv_data_t hsv;
 
 void click_handler(uint8_t clicks_count) {
     NRF_LOG_INFO("CLICK HANDLER %" PRIu8 " clicks", clicks_count);
+    hsv = get_current_color();
     if (clicks_count == 2) {
         switch (current_input_state) {
             case STATE_NO_INPUT:
@@ -94,19 +98,23 @@ void led1_blink_timer_handler(void* p_context) {
     set_led1_brightness(led1_brightness + pwm_step);
 }
 
+
 void init_board() {
-    app_timer_init();
-    nrfx_systick_init();
-
-    init_nmvc();
-
-    button_control_init();
     ret_code_t ret = NRF_LOG_INIT(NULL);
     APP_ERROR_CHECK(ret);
 
     NRF_LOG_DEFAULT_BACKENDS_INIT();
-}
 
+    #if ESTC_USB_CLI_ENABLED == 1
+        cli_init(commands_cli_listener);
+        commands_init();
+    #endif
+
+    button_control_init();
+
+    app_timer_init();
+    nrfx_systick_init();
+}
 
 void main_loop() {
     nrfx_pwm_t driver_instance = pwm_control_init();
@@ -116,16 +124,21 @@ void main_loop() {
 
     button_interrupt_init(BUTTON1_ID, click_handler, release_handler);
 
-    hsv_data_t hsv =  get_last_saved_or_default_hsv_data();
+    hsv = get_last_saved_hsv_data();
     set_led2_color_by_hsv(&hsv);
 
     int8_t hue_step = HUE_STEP;
     int8_t saturation_step = SATURATION_STEP;
     int8_t value_step = VALUE_STEP;
-
+    
     while (true) {
+        #if ESTC_USB_CLI_ENABLED == 1
+            cli_process();
+            commands_process();
+        #endif
+
         if (current_input_state == STATE_NO_INPUT && should_save_data) {
-            save_hsv_data(&hsv);
+            write_hsv_data(&hsv);
             should_save_data = false;
         }
         else if (should_change_color && 
