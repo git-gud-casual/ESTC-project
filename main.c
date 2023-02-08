@@ -9,6 +9,7 @@
 #endif
 
 #include "modules/button_control/button_control.h"
+#include "modules/fs/fs.h"
 
 
 #include "nrfx_pwm.h"
@@ -50,9 +51,23 @@ APP_TIMER_DEF(led1_blink_timer);
 
 static hsv_data_t hsv;
 
+static uint32_t clicks = 0;
+
 void click_handler(uint8_t clicks_count) {
+    clicks += 1;
+    fs_header_t *head = fs_find_record("clicks_count");
+    if (head != NULL) {
+        uint32_t fs_clicks = 0;
+        fs_read(head, &fs_clicks, 4);
+        NRF_LOG_INFO("FS clicks count %" PRIu32, fs_clicks);
+    }
+    else {
+        NRF_LOG_INFO("Record doesnt found");
+    }
     NRF_LOG_INFO("CLICK HANDLER %" PRIu8 " clicks", clicks_count);
+    return;
     hsv = get_current_color();
+    set_led2_color_by_hsv(&hsv);
     if (clicks_count == 2) {
         switch (current_input_state) {
             case STATE_NO_INPUT:
@@ -86,6 +101,8 @@ void click_handler(uint8_t clicks_count) {
 }
 
 void release_handler() {
+    NRF_LOG_INFO("clicks_count %" PRIu32, clicks);
+    fs_write("clicks_count", &clicks, 4);
     NRF_LOG_INFO("RELEASE HANDLER");
     should_change_color = false;
 } 

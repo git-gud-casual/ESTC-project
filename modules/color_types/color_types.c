@@ -76,7 +76,7 @@ rgb_data_t get_rgb_from_hsv(const hsv_data_t* hsv_data) {
         g_component = 0;
         b_component = x;
     }
-    return new_rgb((r_component + m) * 255, (g_component + m) * 255, (b_component + m) * 255);
+    return new_rgb((uint8_t)((r_component + m) * 255) % 256, (uint8_t)((g_component + m) * 255) % 256, (uint8_t)((b_component + m) * 255) % 256);
 }
 
 hsv_data_t get_hsv_from_rgb(const rgb_data_t* rgb_data) {
@@ -96,7 +96,7 @@ hsv_data_t get_hsv_from_rgb(const rgb_data_t* rgb_data) {
         if (r == max) {
             h = 60 * fmod(fabs((g - b) / delta), 6.);
         } else if (g == max) {
-            h = 60 * (fabs((b - g) / delta) + 2);
+            h = 60 * (fabs((b - r) / delta) + 2);
         }
 
         if (b == max) {

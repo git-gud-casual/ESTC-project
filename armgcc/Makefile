@@ -72,6 +72,7 @@ SRC_FILES += \
   $(PROJ_DIR)/modules/cli/cli.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_nvmc.c \
   $(PROJ_DIR)/modules/commands/commands.c \
+  $(PROJ_DIR)/modules/fs/fs.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
