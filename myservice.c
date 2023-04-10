@@ -20,7 +20,7 @@ ret_code_t estc_ble_service_init(ble_estc_service_t *service)
     APP_ERROR_CHECK(error_code);
 
     // TODO: 4. Add service to the BLE stack using `sd_ble_gatts_service_add`
-    error_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service_uuid, &(service->service_handle));
+    error_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service_uuid, &service->service_handle);
     APP_ERROR_CHECK(error_code);
 
     NRF_LOG_DEBUG("Service UUID: 0x%04x", service_uuid.uuid);

@@ -112,7 +112,8 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 /**< Universally unique service identifiers. */ 
 static ble_uuid_t m_adv_uuids[] =                                             
 {
-    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_VENDOR_BEGIN}
+    {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE},
+    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_BLE}
 };
 
 ble_estc_service_t m_service_example; /**< ESTC example BLE service */
@@ -434,7 +435,7 @@ static void advertising_init(void)
 
     init.srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
 	init.srdata.uuids_complete.p_uuids = m_adv_uuids;
-
+    
     init.config.ble_adv_fast_enabled  = true;
     init.config.ble_adv_fast_interval = APP_ADV_INTERVAL;
     init.config.ble_adv_fast_timeout  = APP_ADV_DURATION;
