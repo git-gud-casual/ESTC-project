@@ -80,6 +80,8 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
+#include "myservice.h"
+
 
 #define DEVICE_NAME                     "--|DeviceNameWithLength==30|--"        /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
@@ -107,11 +109,13 @@ BLE_ADVERTISING_DEF(m_advertising);                                             
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
-/* static ble_uuid_t m_adv_uuids[] =                                               < Universally unique service identifiers. 
+/**< Universally unique service identifiers. */ 
+static ble_uuid_t m_adv_uuids[] =                                             
 {
-    {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE}
-}; */
+    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_VENDOR_BEGIN}
+};
 
+ble_estc_service_t m_service_example; /**< ESTC example BLE service */
 
 static void advertising_start(void);
 
@@ -211,6 +215,8 @@ static void services_init(void)
     err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
     APP_ERROR_CHECK(err_code);
 
+    err_code = estc_ble_service_init(&m_service_example);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -425,14 +431,13 @@ static void advertising_init(void)
     memset(&init, 0, sizeof(init));
 
     init.advdata.name_type = BLE_ADVDATA_FULL_NAME;
-    init.srdata.name_type = BLE_ADVDATA_FULL_NAME;
+
+    init.srdata.uuids_complete.uuid_cnt = sizeof(m_adv_uuids) / sizeof(m_adv_uuids[0]);
+	init.srdata.uuids_complete.p_uuids = m_adv_uuids;
 
     init.config.ble_adv_fast_enabled  = true;
     init.config.ble_adv_fast_interval = APP_ADV_INTERVAL;
     init.config.ble_adv_fast_timeout  = APP_ADV_DURATION;
-
-    // TODO: Add more data to the advertisement data
-    // TODO: Add more data to the scan response data
 
     init.evt_handler = on_adv_evt;
 
