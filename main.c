@@ -113,7 +113,7 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 static ble_uuid_t m_adv_uuids[] =                                             
 {
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE},
-    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_BLE}
+    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_VENDOR_BEGIN}
 };
 
 ble_estc_service_t m_service_example; /**< ESTC example BLE service */
@@ -521,8 +521,8 @@ int main(void)
     ble_stack_init();
     gap_params_init();
     gatt_init();
-    advertising_init();
     services_init();
+    advertising_init();
     conn_params_init();
 
     // Start execution.
