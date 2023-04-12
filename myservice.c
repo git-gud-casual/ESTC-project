@@ -55,7 +55,7 @@ static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service)
 
 
     // TODO: 6.2. Configure the characteristic value attribute (set the UUID and metadata)
-    ble_uuid_t char_uuid = {.uuid = ESTC_GATT_CHAR_1_UUID, .type = service->service_uuid.type};
+    ble_uuid_t char_uuid = {.uuid = ESTC_GATT_CHAR_1_UUID, .type = BLE_UUID_TYPE_BLE};
 
     ble_gatts_attr_t attr_char_value = { 0 };
 
