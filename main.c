@@ -51,6 +51,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "nordic_common.h"
 #include "nrf.h"
@@ -107,6 +108,13 @@ NRF_BLE_GATT_DEF(m_gatt);                                                       
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 
+
+#define INDICATE_TIMEOUT_MS 15 * 1000
+#define NOTIFY_TIMEOUT_MS 10 * 1000
+
+APP_TIMER_DEF(indicate_timer);
+APP_TIMER_DEF(notify_timer);
+
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
 /**< Universally unique service identifiers. */ 
@@ -141,10 +149,46 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
  *
  * @details Initializes the timer module. This creates and starts application timers.
  */
+
+static uint8_t indicate_val = 0, notify_val = 0;
+static void indicate_timer_handler(void *ctx) {
+    if (m_conn_handle == BLE_CONN_HANDLE_INVALID) {
+        return;
+    }
+
+    indicate_val = indicate_val % 255 + 1;
+    NRF_LOG_DEBUG("Send indication with value %" PRIu8, indicate_val);
+    ret_code_t err_code = estc_ble_update_char(m_conn_handle, m_service_example.indication_char.value_handle, 
+                                               BLE_GATT_HVX_INDICATION, &indicate_val, sizeof(indicate_val));
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_ERROR("Indication wasn`t sended %" PRIx32, err_code);
+    }
+}
+
+static void notify_timer_handler(void *ctx) {
+    if (m_conn_handle == BLE_CONN_HANDLE_INVALID) {
+        return;
+    }
+
+    notify_val = notify_val % 255 + 1;
+    NRF_LOG_DEBUG("Send notification with value %" PRIu8, indicate_val);
+    ret_code_t err_code = estc_ble_update_char(m_conn_handle, m_service_example.notification_char.value_handle, 
+                                               BLE_GATT_HVX_NOTIFICATION, &notify_val, sizeof(notify_val));
+    if (err_code != NRF_SUCCESS) {
+        NRF_LOG_ERROR("Notification wasn`t sended %" PRIx32, err_code);
+    }
+}
+
 static void timers_init(void)
 {
     // Initialize timer module.
     ret_code_t err_code = app_timer_init();
+    APP_ERROR_CHECK(err_code);
+
+    err_code = app_timer_create(&indicate_timer, APP_TIMER_MODE_REPEATED, indicate_timer_handler);
+    APP_ERROR_CHECK(err_code);
+    
+    err_code = app_timer_create(&notify_timer, APP_TIMER_MODE_REPEATED, notify_timer_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -280,11 +324,12 @@ static void conn_params_init(void)
  */
 static void application_timers_start(void)
 {
-    /* YOUR_JOB: Start your timers. below is an example of how to start a timer.
-       ret_code_t err_code;
-       err_code = app_timer_start(m_app_timer_id, TIMER_INTERVAL, NULL);
-       APP_ERROR_CHECK(err_code); */
+    ret_code_t err_code;
+    err_code = app_timer_start(indicate_timer, APP_TIMER_TICKS(INDICATE_TIMEOUT_MS), NULL);
+    APP_ERROR_CHECK(err_code);
 
+    err_code = app_timer_start(notify_timer, APP_TIMER_TICKS(NOTIFY_TIMEOUT_MS), NULL);
+    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -337,7 +382,6 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
             break;
-
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
         {
             NRF_LOG_DEBUG("PHY update request.");
@@ -364,6 +408,12 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
             err_code = sd_ble_gap_disconnect(p_ble_evt->evt.gatts_evt.conn_handle,
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
+            break;
+        case BLE_GATTS_EVT_HVC:
+            NRF_LOG_INFO("Indication confirms with handle %" PRIu32, p_ble_evt->evt.gatts_evt.params.hvc.handle);
+            if (p_ble_evt->evt.gatts_evt.params.hvc.handle == m_service_example.indication_char.value_handle) {
+                estc_ble_indication_confirms();
+            }
             break;
         default:
             // No implementation needed.

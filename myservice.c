@@ -7,73 +7,108 @@
 #include "ble_gatts.h"
 #include "ble_srv_common.h"
 
-static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service);
+static ret_code_t estc_ble_add_characteristics(ble_estc_service_t*, ble_gatts_char_handles_t*, 
+                                               uint16_t, uint8_t*, uint16_t, uint8_t, char*);
 
 ret_code_t estc_ble_service_init(ble_estc_service_t *service)
 {
     ret_code_t error_code = NRF_SUCCESS;
 
-    service->service_uuid.uuid = ESTC_SERVICE_UUID;
+    ble_uuid_t service_uuid;
+    service_uuid.uuid = ESTC_SERVICE_UUID;
     
-    // TODO: 3. Add service UUIDs to the BLE stack table using `sd_ble_uuid_vs_add`
+    // Add service` UUID to BLE stack table
     ble_uuid128_t ble_uuid = {.uuid128=ESTC_BASE_UUID};
-    error_code = sd_ble_uuid_vs_add(&ble_uuid, &service->service_uuid.type);
+    error_code = sd_ble_uuid_vs_add(&ble_uuid, &service_uuid.type);
     APP_ERROR_CHECK(error_code);
 
-    // TODO: 4. Add service to the BLE stack using `sd_ble_gatts_service_add`
-    error_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service->service_uuid, &service->service_handle);
+    // Add service to BLE stack
+    error_code = sd_ble_gatts_service_add(BLE_GATTS_SRVC_TYPE_PRIMARY, &service_uuid, &service->service_handle);
     APP_ERROR_CHECK(error_code);
 
-    NRF_LOG_DEBUG("Service UUID: 0x%04x", service->service_uuid.uuid);
-    NRF_LOG_DEBUG("Service UUID type: 0x%02x", service->service_uuid.type);
+    NRF_LOG_DEBUG("Service UUID: 0x%04x", service_uuid.uuid);
+    NRF_LOG_DEBUG("Service UUID type: 0x%02x", service_uuid.type);
     NRF_LOG_DEBUG("Service handle: 0x%04x", service->service_handle);
 
-    return estc_ble_add_characteristics(service);
+    uint8_t value[1] = {0x00};
+    uint8_t char_props = ESTC_READ_PROPERTY; 
+    // Configure indication char
+    error_code = estc_ble_add_characteristics(service, &service->indication_char, ESTC_INDICATION_CHAR_UUID, value, sizeof(value), 
+                                              char_props | ESTC_INDICATE_PROPERTY, ESTC_INDICATION_CHAR_DESC);
+    APP_ERROR_CHECK(error_code);
+
+    // Configure notification char
+    error_code = estc_ble_add_characteristics(service, &service->notification_char, ESTC_NOTIFICATION_CHAR_UUID, value, sizeof(value), 
+                                              char_props | ESTC_NOTIFY_PROPERTY, ESTC_NOTIFICATION_CHAR_DESC);
+    APP_ERROR_CHECK(error_code);
+
+    return error_code;
 }
 
-static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service)
+static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service, ble_gatts_char_handles_t *char_handle, uint16_t uuid,
+                                               uint8_t *p_val, uint16_t val_len, uint8_t char_properties, char *cdesc)
 {
     ret_code_t error_code = NRF_SUCCESS;
 
-    // TODO: 6.5. Configure Characteristic metadata (enable read and write)
+    // Set char metadata
     ble_gatts_char_md_t char_md = {0};
-    char_md.char_props = (ble_gatt_char_props_t) {.read = 1, .write = 1};
+    char_md.char_props.read = char_properties & ESTC_READ_PROPERTY ? 1 : 0;
+    char_md.char_props.write = char_properties & ESTC_WRITE_PROPERTY ? 1 : 0;
+    char_md.char_props.indicate = char_properties & ESTC_INDICATE_PROPERTY ? 1 : 0;
+    char_md.char_props.notify = char_properties & ESTC_NOTIFY_PROPERTY ? 1 : 0;
 
-    ble_srv_utf8_str_t utf8_str = {0};
-    ble_srv_ascii_to_utf8(&utf8_str, ESTC_CHAR_1_DESC);
-    char_md.p_char_user_desc = utf8_str.p_str;
-    char_md.char_user_desc_size = utf8_str.length;
-    char_md.char_user_desc_max_size = utf8_str.length;
+    // Set char description
+    if (cdesc != NULL) {
+        ble_srv_utf8_str_t utf8_str = {0};
+        ble_srv_ascii_to_utf8(&utf8_str, cdesc);
+        char_md.p_char_user_desc = utf8_str.p_str;
+        char_md.char_user_desc_size = utf8_str.length;
+        char_md.char_user_desc_max_size = utf8_str.length;
+    }
 
     // Configures attribute metadata. For now we only specify that the attribute will be stored in the softdevice
     ble_gatts_attr_md_t attr_md = { 0 };
     attr_md.vloc = BLE_GATTS_VLOC_STACK;
 
-    // TODO: 6.6. Set read/write security levels to our attribute metadata using `BLE_GAP_CONN_SEC_MODE_SET_OPEN`
+    // Set read/write security levels to our attribute metadata using `BLE_GAP_CONN_SEC_MODE_SET_OPEN`
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.write_perm);
 
-
-    // TODO: 6.2. Configure the characteristic value attribute (set the UUID and metadata)
-    ble_uuid_t char_uuid = {.uuid = ESTC_GATT_CHAR_1_UUID};
-
-    ble_gatts_attr_t attr_char_value = { 0 };
-
+    // Configure uuid, default value
+    ble_uuid_t char_uuid = {.uuid = uuid, .type=BLE_UUID_TYPE_VENDOR_BEGIN};
+    ble_gatts_attr_t attr_char_value = {.init_len = val_len, .max_len = val_len, .p_value = p_val};
     attr_char_value.p_uuid = &char_uuid;
     attr_char_value.p_attr_md = &attr_md;
-
-
-    // TODO: 6.7. Set characteristic length in number of bytes in attr_char_value structure
-    attr_char_value.init_len = 2;
-    attr_char_value.max_len = 2;
-
-    uint8_t val[2] = {0xC0, 0xDE};
-    attr_char_value.p_value = val;
-
+    char_md.p_cccd_md = &attr_md;
 
     // TODO: 6.4. Add new characteristic to the service using `sd_ble_gatts_characteristic_add`
-    error_code = sd_ble_gatts_characteristic_add(service->service_handle, &char_md, &attr_char_value, &service->char1_handle);
+    error_code = sd_ble_gatts_characteristic_add(service->service_handle, &char_md, &attr_char_value, char_handle);
     APP_ERROR_CHECK(error_code);
 
     return NRF_SUCCESS;
+}
+
+static bool _can_send_indication = true;
+
+void estc_ble_indication_confirms() {
+    _can_send_indication = true;
+}
+
+ret_code_t estc_ble_update_char(uint16_t conn_handle, uint16_t char_handle, 
+                                uint8_t type, uint8_t *p_val, uint16_t length) {
+    if (!_can_send_indication && type == BLE_GATT_HVX_INDICATION) {
+        return 0;
+    }
+    ble_gatts_hvx_params_t hvx_params = {
+        .type = type,
+        .p_len = &length,
+        .p_data = p_val,
+        .offset = 0,
+        .handle = char_handle
+    };
+
+    ret_code_t err_code = sd_ble_gatts_hvx(conn_handle, &hvx_params);
+    _can_send_indication =  err_code != NRF_SUCCESS;
+
+    return err_code;
 }
