@@ -1,4 +1,4 @@
-#include "myservice.h"
+#include "ble_service.h"
 
 #include "app_error.h"
 #include "nrf_log.h"
@@ -7,12 +7,14 @@
 #include "ble_gatts.h"
 #include "ble_srv_common.h"
 
+
 static ret_code_t estc_ble_add_characteristics(ble_estc_service_t*, ble_gatts_char_handles_t*, 
                                                uint16_t, uint8_t*, uint16_t, uint8_t, char*);
 
 ret_code_t estc_ble_service_init(ble_estc_service_t *service)
 {
     ret_code_t error_code = NRF_SUCCESS;
+    uint8_t rgb_default_data[3] = {0};
 
     ble_uuid_t service_uuid;
     service_uuid.uuid = ESTC_SERVICE_UUID;
@@ -30,16 +32,14 @@ ret_code_t estc_ble_service_init(ble_estc_service_t *service)
     NRF_LOG_DEBUG("Service UUID type: 0x%02x", service_uuid.type);
     NRF_LOG_DEBUG("Service handle: 0x%04x", service->service_handle);
 
-    uint8_t value[1] = {0x00};
-    uint8_t char_props = ESTC_READ_PROPERTY; 
-    // Configure indication char
-    error_code = estc_ble_add_characteristics(service, &service->indication_char, ESTC_INDICATION_CHAR_UUID, value, sizeof(value), 
-                                              char_props | ESTC_INDICATE_PROPERTY, ESTC_INDICATION_CHAR_DESC);
+    // Configure led_color_read_char
+    error_code = estc_ble_add_characteristics(service, &service->color_read_char, ESTC_COLOR_READ_CHAR_UUID, rgb_default_data, sizeof(rgb_default_data), 
+                                              ESTC_READ_PROPERTY | ESTC_NOTIFY_PROPERTY, ESTC_COLOR_READ_CHAR_DESC);
     APP_ERROR_CHECK(error_code);
 
-    // Configure notification char
-    error_code = estc_ble_add_characteristics(service, &service->notification_char, ESTC_NOTIFICATION_CHAR_UUID, value, sizeof(value), 
-                                              char_props | ESTC_NOTIFY_PROPERTY, ESTC_NOTIFICATION_CHAR_DESC);
+    // Configure led_color_write_char
+    error_code = estc_ble_add_characteristics(service, &service->color_write_char, ESTC_COLOR_WRITE_CHAR_UUID, rgb_default_data, sizeof(rgb_default_data), 
+                                              ESTC_WRITE_PROPERTY, ESTC_COLOR_WRITE_CHAR_DESC);
     APP_ERROR_CHECK(error_code);
 
     return error_code;

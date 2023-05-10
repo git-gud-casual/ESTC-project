@@ -75,16 +75,38 @@
 #include "nrf_ble_gatt.h"
 #include "nrf_ble_qwr.h"
 #include "nrf_pwr_mgmt.h"
+#include "nrfx_pwm.h"
+#include "nrfx_systick.h"
+#include "nrfx_gpiote.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
-#include "myservice.h"
+#include "modules/ble_service/ble_service.h"
+#if ESTC_USB_CLI_ENABLED == 1
+    #include "modules/cli/cli.h"
+    #include "modules/commands/commands.h"
+#endif
+#include "modules/fs/fs.h"
+#include "modules/button_control/button_control.h"
+#include "modules/color_types/color_types.h"
+#include "modules/led_color/led_color.h"
 
 
-#define DEVICE_NAME                     "--|DeviceNameWithLength==30|--"        /**< Name of device. Will be included in the advertising data. */
+#define HUE_MODIFICATION_LED1_BLINK_TIME_MS 10
+#define SATURATION_MODIFICATION_LED1_BLINK_TIME_MS 1
+
+#define PWM_STEP 1
+#define HUE_STEP 1
+#define SATURATION_STEP 1
+#define VALUE_STEP 1
+#define DEVICE_ID 77
+
+#define CHANGE_COLOR_SPEED_TIME_US 20000
+
+#define DEVICE_NAME                     "BLE LED Service"        /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
 #define APP_ADV_INTERVAL                300                                     /**< The advertising interval (in units of 0.625 ms. This value corresponds to 187.5 ms). */
 
@@ -108,13 +130,6 @@ NRF_BLE_GATT_DEF(m_gatt);                                                       
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
 
-
-#define INDICATE_TIMEOUT_MS 15 * 1000
-#define NOTIFY_TIMEOUT_MS 10 * 1000
-
-APP_TIMER_DEF(indicate_timer);
-APP_TIMER_DEF(notify_timer);
-
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        /**< Handle of the current connection. */
 
 /**< Universally unique service identifiers. */ 
@@ -125,6 +140,88 @@ static ble_uuid_t m_adv_uuids[] =
 };
 
 ble_estc_service_t m_service_example; /**< ESTC example BLE service */
+
+
+APP_TIMER_DEF(led1_blink_timer);                                                /**< Timer to blink led1 when changing led2 color*/
+
+/* Code to changing led2 color with button press*/
+typedef enum {
+    STATE_NO_INPUT,
+    STATE_HUE_MODIFICATION,
+    STATE_SATURATION_MODIFICATION,
+    STATE_BRIGHTNESS_MODIFICATION
+} input_states_t;
+
+
+static volatile int8_t pwm_step = PWM_STEP;
+
+static input_states_t current_input_state = STATE_NO_INPUT;
+static volatile bool should_change_color = false;
+
+static nrfx_systick_state_t change_color_speed_timer;
+
+static hsv_data_t hsv;
+
+void click_handler(uint8_t clicks_count) {
+    NRF_LOG_INFO("CLICK HANDLER %" PRIu8 " clicks", clicks_count);
+    hsv = get_current_hsv_color();
+    if (clicks_count == 2) {
+        switch (current_input_state) {
+            case STATE_NO_INPUT:
+                current_input_state = STATE_HUE_MODIFICATION;
+                app_timer_start(led1_blink_timer, APP_TIMER_TICKS(HUE_MODIFICATION_LED1_BLINK_TIME_MS), NULL);
+                break;
+            case STATE_HUE_MODIFICATION:
+                current_input_state = STATE_SATURATION_MODIFICATION;
+                app_timer_stop(led1_blink_timer);
+                app_timer_start(led1_blink_timer, APP_TIMER_TICKS(SATURATION_MODIFICATION_LED1_BLINK_TIME_MS), NULL);
+                break;
+            case STATE_SATURATION_MODIFICATION:
+                current_input_state = STATE_BRIGHTNESS_MODIFICATION;
+                app_timer_stop(led1_blink_timer);
+
+                set_led1_brightness(PWM_TOP_VALUE);
+                break;
+            case STATE_BRIGHTNESS_MODIFICATION:
+                current_input_state = STATE_NO_INPUT;
+
+                set_led1_brightness(0);
+                break;
+        }
+        
+    }
+    else if (clicks_count == 1) {
+        should_change_color = true;
+        nrfx_systick_get(&change_color_speed_timer);
+    }
+}
+
+void release_handler() {
+    NRF_LOG_INFO("RELEASE HANDLER");
+    should_change_color = false;
+} 
+
+void led1_blink_timer_handler(void* p_context) {
+    uint16_t led1_brightness = get_led1_brightness();
+    if (led1_brightness + pwm_step > PWM_TOP_VALUE || led1_brightness  + pwm_step < 0) {
+        pwm_step *= -1;
+    }
+    set_led1_brightness(led1_brightness + pwm_step);
+}
+
+void ble_write_evt(ble_evt_t const * p_ble_evt, void * p_context) {
+    ble_gatts_evt_write_t const* p_evt_write = &p_ble_evt->evt.gatts_evt.params.write;
+	uint16_t handle = p_evt_write->handle;
+
+    if (handle == m_service_example.color_write_char.value_handle && p_evt_write->len > 2) {
+        NRF_LOG_INFO("Set led2 by rgb on write event");
+        rgb_data_t rgb = {.r = p_evt_write->data[0], .g = p_evt_write->data[1], .b = p_evt_write->data[2]};
+
+        set_led2_color_by_rgb(&rgb);
+    }
+}
+
+/* --- */
 
 static void advertising_start(void);
 
@@ -150,34 +247,6 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t * p_file_name)
  * @details Initializes the timer module. This creates and starts application timers.
  */
 
-static uint8_t indicate_val = 0, notify_val = 0;
-static void indicate_timer_handler(void *ctx) {
-    if (m_conn_handle == BLE_CONN_HANDLE_INVALID) {
-        return;
-    }
-
-    indicate_val = indicate_val % 255 + 1;
-    NRF_LOG_DEBUG("Send indication with value %" PRIu8, indicate_val);
-    ret_code_t err_code = estc_ble_update_char(m_conn_handle, m_service_example.indication_char.value_handle, 
-                                               BLE_GATT_HVX_INDICATION, &indicate_val, sizeof(indicate_val));
-    if (err_code != NRF_SUCCESS) {
-        NRF_LOG_ERROR("Indication wasn`t sended %" PRIx32, err_code);
-    }
-}
-
-static void notify_timer_handler(void *ctx) {
-    if (m_conn_handle == BLE_CONN_HANDLE_INVALID) {
-        return;
-    }
-
-    notify_val = notify_val % 255 + 1;
-    NRF_LOG_DEBUG("Send notification with value %" PRIu8, indicate_val);
-    ret_code_t err_code = estc_ble_update_char(m_conn_handle, m_service_example.notification_char.value_handle, 
-                                               BLE_GATT_HVX_NOTIFICATION, &notify_val, sizeof(notify_val));
-    if (err_code != NRF_SUCCESS) {
-        NRF_LOG_ERROR("Notification wasn`t sended %" PRIx32, err_code);
-    }
-}
 
 static void timers_init(void)
 {
@@ -185,10 +254,7 @@ static void timers_init(void)
     ret_code_t err_code = app_timer_init();
     APP_ERROR_CHECK(err_code);
 
-    err_code = app_timer_create(&indicate_timer, APP_TIMER_MODE_REPEATED, indicate_timer_handler);
-    APP_ERROR_CHECK(err_code);
-    
-    err_code = app_timer_create(&notify_timer, APP_TIMER_MODE_REPEATED, notify_timer_handler);
+    err_code = app_timer_create(&led1_blink_timer, APP_TIMER_MODE_REPEATED, led1_blink_timer_handler);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -324,12 +390,7 @@ static void conn_params_init(void)
  */
 static void application_timers_start(void)
 {
-    ret_code_t err_code;
-    err_code = app_timer_start(indicate_timer, APP_TIMER_TICKS(INDICATE_TIMEOUT_MS), NULL);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = app_timer_start(notify_timer, APP_TIMER_TICKS(NOTIFY_TIMEOUT_MS), NULL);
-    APP_ERROR_CHECK(err_code);
+    /* Nothing to start */
 }
 
 
@@ -341,14 +402,10 @@ static void application_timers_start(void)
  */
 static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 {
-    ret_code_t err_code;
-
     switch (ble_adv_evt)
     {
         case BLE_ADV_EVT_FAST:
             NRF_LOG_INFO("Fast advertising.");
-            err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
-            APP_ERROR_CHECK(err_code);
             NRF_LOG_INFO("Advert data: %s", m_advertising.adv_data.adv_data.p_data);
             NRF_LOG_INFO("SRP data %s", m_advertising.adv_data.scan_rsp_data.p_data);
             break;
@@ -366,6 +423,7 @@ static void on_adv_evt(ble_adv_evt_t ble_adv_evt)
 static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
     ret_code_t err_code = NRF_SUCCESS;
+    rgb_data_t curr_rgb;
 
     switch (p_ble_evt->header.evt_id)
     {
@@ -376,11 +434,14 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 
         case BLE_GAP_EVT_CONNECTED:
             NRF_LOG_INFO("Connected.");
-            err_code = bsp_indication_set(BSP_INDICATE_CONNECTED);
-            APP_ERROR_CHECK(err_code);
             m_conn_handle = p_ble_evt->evt.gap_evt.conn_handle;
             err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_conn_handle);
             APP_ERROR_CHECK(err_code);
+
+            // Update char
+            curr_rgb = get_current_rgb_color();
+            estc_ble_update_char(m_conn_handle, m_service_example.color_read_char.value_handle, 
+                                 BLE_GATT_HVX_NOTIFICATION, (uint8_t*) &curr_rgb, sizeof(curr_rgb));
             break;
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
         {
@@ -409,11 +470,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
                                              BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
             APP_ERROR_CHECK(err_code);
             break;
-        case BLE_GATTS_EVT_HVC:
-            NRF_LOG_INFO("Indication confirms with handle %" PRIu32, p_ble_evt->evt.gatts_evt.params.hvc.handle);
-            if (p_ble_evt->evt.gatts_evt.params.hvc.handle == m_service_example.indication_char.value_handle) {
-                estc_ble_indication_confirms();
-            }
+        case BLE_GATTS_EVT_WRITE:
+            NRF_LOG_DEBUG("BLE Write event");
+            ble_write_evt(p_ble_evt, p_context);
             break;
         default:
             // No implementation needed.
@@ -448,30 +507,6 @@ static void ble_stack_init(void)
 }
 
 
-/**@brief Function for handling events from the BSP module.
- *
- * @param[in]   event   Event generated when button is pressed.
- */
-static void bsp_event_handler(bsp_event_t event)
-{
-    ret_code_t err_code;
-
-    switch (event)
-    {
-        case BSP_EVENT_DISCONNECT:
-            err_code = sd_ble_gap_disconnect(m_conn_handle,
-                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            if (err_code != NRF_ERROR_INVALID_STATE)
-            {
-                APP_ERROR_CHECK(err_code);
-            }
-            break; // BSP_EVENT_DISCONNECT
-        default:
-            break;
-    }
-}
-
-
 /**@brief Function for initializing the Advertising functionality.
  */
 static void advertising_init(void)
@@ -496,22 +531,6 @@ static void advertising_init(void)
     APP_ERROR_CHECK(err_code);
 
     ble_advertising_conn_cfg_tag_set(&m_advertising, APP_BLE_CONN_CFG_TAG);
-}
-
-
-/**@brief Function for initializing buttons and leds.
- *
- * @param[out] p_erase_bonds  Will be true if the clear bonding button was pressed to wake the application up.
- */
-static void buttons_leds_init(void)
-{
-    ret_code_t err_code;
-
-    err_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = bsp_btn_ble_init(NULL, NULL);
-    APP_ERROR_CHECK(err_code);
 }
 
 
@@ -558,6 +577,11 @@ static void advertising_start(void)
     APP_ERROR_CHECK(err_code);
 }
 
+void buttons_init() {
+    button_control_init();
+    button_interrupt_init(BUTTON1_ID, click_handler, release_handler);
+}
+
 
 /**@brief Function for application main entry.
  */
@@ -566,7 +590,6 @@ int main(void)
     // Initialize.
     log_init();
     timers_init();
-    buttons_leds_init();
     power_management_init();
     ble_stack_init();
     gap_params_init();
@@ -574,16 +597,81 @@ int main(void)
     services_init();
     advertising_init();
     conn_params_init();
+    nrfx_systick_init();
+    pwm_control_init();
+    nrfx_gpiote_init();
+    buttons_init();
+    fs_init();
+    #if ESTC_USB_CLI_ENABLED == 1
+        cli_init(commands_cli_listener);
+        commands_init();
+    #endif
 
     // Start execution.
-    NRF_LOG_INFO("ESTC advertising example started.");
     application_timers_start();
-
     advertising_start();
+    
+    /* Getting last saved hsv if it exists.*/
+    fs_header_t *last_hsv_header = fs_find_record("last_hsv");
+    hsv_data_t hsv;
+    if (last_hsv_header == NULL) {
+        hsv = new_hsv(360. * 77 / 100, 100, 100);
+    } else {
+       fs_read(last_hsv_header, &hsv, last_hsv_header->length);
+    }
+    set_led2_color_by_hsv(&hsv);
+    led_color_was_color_changed(); /* Set color_was_changed = false */
+
+    /* Init steps for hsv editing */
+    int8_t hue_step = HUE_STEP;
+    int8_t saturation_step = SATURATION_STEP;
+    int8_t value_step = VALUE_STEP;
 
     // Enter main loop.
     for (;;)
     {
+        #if ESTC_USB_CLI_ENABLED == 1
+            cli_process();
+            commands_process();
+        #endif
+
+        /* Hsv editing process */
+        if (current_input_state == STATE_NO_INPUT && led_color_was_color_changed()) {
+            hsv = get_current_hsv_color();
+            fs_write("last_hsv", &hsv, sizeof(hsv));
+
+            if (m_conn_handle != BLE_CONN_HANDLE_INVALID) {
+                rgb_data_t curr_rgb = get_current_rgb_color();
+                estc_ble_update_char(m_conn_handle, m_service_example.color_read_char.value_handle, 
+                                     BLE_GATT_HVX_NOTIFICATION, (uint8_t*) &curr_rgb, sizeof(curr_rgb));
+            }
+        }
+        else if (should_change_color && 
+                 nrfx_systick_test(&change_color_speed_timer, CHANGE_COLOR_SPEED_TIME_US)) {
+
+            switch (current_input_state) {
+                case STATE_HUE_MODIFICATION:
+                    hsv.h = (hsv.h + hue_step) % 360;
+                    break;
+                case STATE_SATURATION_MODIFICATION:
+                    if (saturation_step + hsv.s > 100 || hsv.s + saturation_step < 0) {
+                        saturation_step *= -1;
+                    }
+                    hsv.s += saturation_step;
+                    break;
+                case STATE_BRIGHTNESS_MODIFICATION:
+                    if (hsv.v + value_step > 100 || hsv.v + value_step < 0) {
+                        value_step *= -1;
+                    }
+                    hsv.v += value_step;
+                    break;
+                case STATE_NO_INPUT:
+                    break;
+            }
+            set_led2_color_by_hsv(&hsv);
+            nrfx_systick_get(&change_color_speed_timer);
+        }
+        
         idle_state_handle();
     }
 }

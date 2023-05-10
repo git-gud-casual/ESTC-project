@@ -5,6 +5,7 @@ DFU_PORT         ?= /dev/ttyACM0
 
 SDK_ROOT ?= /home/user/esl-nsdk
 PROJ_DIR := ..
+ESTC_USB_CLI_ENABLED ?= 1
 
 $(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
   LINKER_SCRIPT  := estc_adverts_gcc_nrf52.ld
@@ -21,6 +22,8 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_gpiote.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_systick.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_uart.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
@@ -93,12 +96,19 @@ SRC_FILES += \
   $(SDK_ROOT)/components/ble/common/ble_conn_params.c \
   $(SDK_ROOT)/components/ble/common/ble_advdata.c \
   $(SDK_ROOT)/components/ble/ble_advertising/ble_advertising.c \
-  $(PROJ_DIR)/myservice.c \
+  $(PROJ_DIR)/modules/ble_service/ble_service.c \
+  $(PROJ_DIR)/modules/button_control/button_control.c \
+  $(PROJ_DIR)/modules/cli/cli.c \
+  $(PROJ_DIR)/modules/color_types/color_types.c \
+  $(PROJ_DIR)/modules/commands/commands.c \
+  $(PROJ_DIR)/modules/led_color/led_color.c \
+  $(PROJ_DIR)/modules/fs/fs.c \
   $(PROJ_DIR)/main.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
   ../config \
+  $(SDK_ROOT)/components/libraries/bootloader/dfu \
   $(SDK_ROOT)/modules/nrfx/mdk \
   $(SDK_ROOT)/modules/nrfx/hal \
   $(SDK_ROOT)/modules/nrfx/drivers/include \
@@ -249,6 +259,7 @@ CFLAGS += -DMBR_PRESENT
 CFLAGS += -DNRF52840_XXAA
 CFLAGS += -DNRF_SD_BLE_API_VERSION=7
 CFLAGS += -DS113
+CFLAGS += -DESTC_USB_CLI_ENABLED=$(ESTC_USB_CLI_ENABLED)
 CFLAGS += -DSOFTDEVICE_PRESENT
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
