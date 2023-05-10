@@ -49,6 +49,21 @@ static size_t get_args_count(char* str) {
     return count;
 }
 
+static rgb_data_array_t get_last_saved_rgb_array() {
+    rgb_data_array_t rgb_array;
+    fs_header_t *rgb_array_header = fs_find_record("rgb_array");
+    if (rgb_array_header == NULL) {
+        rgb_array = (rgb_data_array_t){0};
+    } else {
+        fs_read(rgb_array_header, &rgb_array, sizeof(rgb_array));
+    }
+    return rgb_array;
+}
+
+static void save_colors_array(rgb_data_array_t *rgb_array) {
+    fs_write("rgb_array", rgb_array, sizeof(rgb_data_array_t));
+}
+
 typedef struct {
     uint32_t value;
     bool error;
@@ -161,6 +176,7 @@ static void add_rgb_color(char* args) {
         return;
     }
 
+
     rgb_data_array_t rgb_array = get_last_saved_rgb_array();
     rgb_data_with_name_t rgb_data = new_rgb_with_name(new_rgb(rgb_vals[0], rgb_vals[1], rgb_vals[2]), name, name_length);
     put_rgb_in_array(&rgb_array, &rgb_data);
@@ -176,6 +192,7 @@ static void list_colors(char* args) {
     }
 
     rgb_data_array_t rgb_array = get_last_saved_rgb_array();
+    
     NRF_LOG_INFO("Colors count %" PRIu32, rgb_array.count);
     if (rgb_array.count == 0) {
         send_msg_to_cli(CANT_FIND_ANY_SAVED_COLORS_MSG);
@@ -214,7 +231,7 @@ static void add_current_color(char* args) {
     }
 
     rgb_data_array_t rgb_array = get_last_saved_rgb_array();
-    hsv_data_t hsv_color = get_current_color();
+    hsv_data_t hsv_color = get_current_hsv_color();
 
     rgb_data_with_name_t rgb_data = new_rgb_with_name(get_rgb_from_hsv(&hsv_color), name, name_length);
     put_rgb_in_array(&rgb_array, &rgb_data);
@@ -373,5 +390,4 @@ void commands_process() {
 
 void commands_init() {
     pwm_control_init();
-    init_nmvc();
 }

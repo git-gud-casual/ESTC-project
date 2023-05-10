@@ -1,12 +1,28 @@
 #include "fs.h"
 
 #include "nrf_log.h"
-#include "nrfx_nvmc.h"
+#include "nrf_fstorage.h"
+#include "nrf_fstorage_sd.h"
+#include "nrf_soc.h"
 #include <string.h>
 #include <inttypes.h>
 
 #define FS_MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define FS_MAX(a, b) (((a) < (b) ? (b) : (a)))
+
+NRF_FSTORAGE_DEF(nrf_fstorage_t fstorage_instance) = {
+    .evt_handler = NULL,
+    .start_addr = APP_DATA_ADDR,
+    .end_addr = BOOTLOADER_ADDR
+};
+
+/* Wait function */
+static void fs_wait() {
+    while (nrf_fstorage_is_busy(&fstorage_instance)) {
+        sd_app_evt_wait();
+    }
+}
+
 
 // Id starts from 1. 
 static uint8_t max_id = 0;
@@ -55,6 +71,8 @@ static size_t get_rounded_length(size_t length) {
 static bool is_page_erased(uint32_t page_addr);
 
 static void init_page() {
+    ret_code_t err_code;
+
     fs_header_t *phead;
     for (int8_t page_index = 0; page_index < 3; page_index++) {
         phead = (fs_header_t*)(APP_DATA_ADDR + CODE_PAGE_SIZE * page_index);
@@ -67,7 +85,8 @@ static void init_page() {
         NRF_LOG_INFO("Page %" PRIi8, curr_page);
         if (!is_page_erased(APP_DATA_ADDR)) {
             NRF_LOG_INFO("Erased");
-            nrfx_nvmc_page_erase(APP_DATA_ADDR);
+            err_code = nrf_fstorage_erase(&fstorage_instance, APP_DATA_ADDR, 1, NULL);
+            APP_ERROR_CHECK(err_code);
         }
         curr_page = 0;
     }
@@ -146,7 +165,7 @@ static fs_header_t *get_last_record() {
 
 static bool is_page_erased(uint32_t page_addr) {
     for (uint32_t word_addr = page_addr; word_addr - page_addr < CODE_PAGE_SIZE; word_addr += WORD_SIZE) {
-        if (!nrfx_nvmc_word_writable_check(word_addr, 0xffffffff)) {
+        if (*(uint32_t*)word_addr != 0xffffffff) {
             return false;
         }
     }
@@ -162,8 +181,11 @@ static fs_header_t *transition_to_new_page() {
     uint8_t new_page = (curr_page + 1) % 3;
     uintptr_t new_page_addr = APP_DATA_ADDR + CODE_PAGE_SIZE * new_page;
 
+    ret_code_t err_code;
+
     if (!is_page_erased(new_page_addr)) {
-        nrfx_nvmc_page_erase(new_page_addr);
+        nrf_fstorage_erase(&fstorage_instance, new_page_addr, 1, NULL);
+        fs_wait();
     }
 
     uint32_t ids_was[256 / 32];
@@ -183,21 +205,25 @@ static fs_header_t *transition_to_new_page() {
             if ((ids_was[index] >> shift & 1) == 0) {
                 ids_was[index] = ids_was[index] | (1 << shift);
 
-                nrfx_nvmc_words_write(new_page_addr, (uint32_t*) last_file_version->_val, FS_HEADER_SIZE_BYTES / WORD_SIZE);
-                while(!nrfx_nvmc_write_done_check());
+                err_code = nrf_fstorage_write(&fstorage_instance, new_page_addr, (uint32_t*) last_file_version->_val, FS_HEADER_SIZE_BYTES, NULL);
+                APP_ERROR_CHECK(err_code);
+                fs_wait();
                 last_record = (fs_header_t*) new_page_addr;
                 new_page_addr += FS_HEADER_SIZE_BYTES;
 
                 uint32_t *words = (uint32_t*)((uint8_t*)last_file_version + FS_HEADER_SIZE_BYTES);
-                nrfx_nvmc_words_write(new_page_addr, words, get_rounded_length(last_file_version->length) / WORD_SIZE);
-                while(!nrfx_nvmc_write_done_check());
+                err_code = nrf_fstorage_write(&fstorage_instance, new_page_addr, words, get_rounded_length(last_file_version->length), NULL);
+                APP_ERROR_CHECK(err_code);
+                fs_wait();
 
                 new_page_addr += get_rounded_length(last_file_version->length);
             }
         }
         phead = next_header(phead);
     }
-    nrfx_nvmc_page_erase(APP_DATA_ADDR + CODE_PAGE_SIZE * curr_page);
+    err_code = nrf_fstorage_erase(&fstorage_instance, APP_DATA_ADDR + CODE_PAGE_SIZE * curr_page, 1, NULL);
+    APP_ERROR_CHECK(err_code);
+    fs_wait();
     curr_page = new_page;
     return last_record;
 }
@@ -259,20 +285,24 @@ fs_header_t *fs_write(char* record_name, void *src, size_t bytes_count) {
         }
     }
 
+    ret_code_t err_code;
     fs_header_t head = new_header(record_name, src, bytes_count);
     uint32_t write_addr = last_record != NULL ? (uint32_t)last_record + get_rounded_length(last_record->length) + FS_HEADER_SIZE_BYTES : APP_DATA_ADDR + CODE_PAGE_SIZE * curr_page;
 
     fs_header_t *phead = (fs_header_t*) write_addr;
     
-    nrfx_nvmc_words_write(write_addr, (uint32_t*) head._val, FS_HEADER_SIZE_BYTES / WORD_SIZE);
-    while(!nrfx_nvmc_write_done_check());
+    err_code = nrf_fstorage_write(&fstorage_instance, write_addr, head._val, FS_HEADER_SIZE_BYTES, NULL);
+    APP_ERROR_CHECK(err_code);
+    fs_wait();
+
     write_addr += FS_HEADER_SIZE_BYTES;
 
     if (bytes_count > 0) {
         uint32_t words[get_rounded_length(bytes_count) / WORD_SIZE];
         memcpy(&words, src, bytes_count);
-        nrfx_nvmc_words_write(write_addr, words, get_rounded_length(bytes_count) / WORD_SIZE);
-        while(!nrfx_nvmc_write_done_check());
+        err_code = nrf_fstorage_write(&fstorage_instance, write_addr, words, get_rounded_length(bytes_count), NULL);
+        APP_ERROR_CHECK(err_code);
+        fs_wait();
     }
     
     if (head.id > get_record_max_id()) {
@@ -291,4 +321,14 @@ ret_code_t fs_delete(fs_header_t* header) {
         return NRF_SUCCESS;
     }
     return NRF_ERROR_BASE_NUM;
+}
+
+ret_code_t fs_format() {
+    ret_code_t err_code = nrf_fstorage_erase(&fstorage_instance, APP_DATA_ADDR, 3, NULL);
+    fs_wait();
+    return err_code;
+}
+
+ret_code_t fs_init() {
+    return nrf_fstorage_init(&fstorage_instance, &nrf_fstorage_sd, NULL);
 }

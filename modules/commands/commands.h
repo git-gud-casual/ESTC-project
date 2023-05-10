@@ -9,6 +9,7 @@
 #include "../color_types/color_types.h"
 #include "../cli/cli.h"
 #include "../led_color/led_color.h"
+#include "../fs/fs.h"
 
 
 #define COMMANDS_COUNT 8

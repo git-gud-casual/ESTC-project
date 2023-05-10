@@ -73,15 +73,12 @@ static void clicks_count_timer_handler(void* p_context) {
 }
 
 static void timers_init() {
-    app_timer_init();
-
     app_timer_create(&debouncing_timer, APP_TIMER_MODE_SINGLE_SHOT, debouncing_timer_handler);
     app_timer_create(&clicks_count_timer, APP_TIMER_MODE_SINGLE_SHOT, clicks_count_timer_handler);
 }
 
 void button_control_init() {
     timers_init();
-    nrfx_gpiote_init();
 }
 
 bool button_pressed(uint32_t button_id) {

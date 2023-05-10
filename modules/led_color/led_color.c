@@ -19,6 +19,20 @@ static struct {
                             .led2_green = &seq_values.channel_1, .led2_red = &seq_values.channel_0};
 
 
+static hsv_data_t current_hsv_color = {.0};
+static rgb_data_t current_rgb_color = {0};
+static bool color_was_changed = false;
+
+
+bool led_color_was_color_changed() {
+    if (color_was_changed) {
+        color_was_changed = false;
+        return !color_was_changed;
+    }
+    return color_was_changed;
+}
+
+
 nrfx_pwm_t pwm_control_init() {
     nrfx_pwm_t driver_instance = NRFX_PWM_INSTANCE(1);
 
@@ -35,10 +49,12 @@ nrfx_pwm_t pwm_control_init() {
     return driver_instance;
 }
 
-static hsv_data_t current_color = {.0};
+hsv_data_t get_current_hsv_color() {
+    return current_hsv_color;
+}
 
-hsv_data_t get_current_color() {
-    return current_color;
+rgb_data_t get_current_rgb_color() {
+    return current_rgb_color;
 }
 
 void set_led2_color_by_rgb(const rgb_data_t* rgb) {
@@ -46,7 +62,9 @@ void set_led2_color_by_rgb(const rgb_data_t* rgb) {
     *led_values_pointers_s.led2_blue = rgb->b;
     *led_values_pointers_s.led2_green = rgb->g;
 
-    current_color = get_hsv_from_rgb(rgb);
+    current_rgb_color = *rgb;
+    color_was_changed = true;
+    current_hsv_color = get_hsv_from_rgb(rgb);
 }
 
 void set_led2_color_by_hsv(const hsv_data_t* hsv) {

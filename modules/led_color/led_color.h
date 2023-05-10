@@ -12,4 +12,7 @@ void set_led2_color_by_hsv(const hsv_data_t* hsv);
 void set_led1_brightness(uint8_t brightness);
 uint16_t get_led1_brightness();
 
-hsv_data_t get_current_color();
+hsv_data_t get_current_hsv_color();
+rgb_data_t get_current_rgb_color();
+
+bool led_color_was_color_changed();

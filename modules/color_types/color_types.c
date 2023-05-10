@@ -2,30 +2,18 @@
 #include <math.h>
 #include <inttypes.h>
 
-#include "nrfx_nvmc.h"
 #include "nrf_dfu_types.h"
 
 #include "nrf_log.h"
 #include <string.h>
 
-#define BOOTLOADER_ADDR 0xE0000
-#define APP_DATA_ADDR (BOOTLOADER_ADDR - NRF_DFU_APP_DATA_AREA_SIZE)
-#define GET_ADDRESS_BY_OFFSET(offset) (APP_DATA_ADDR + offset)
-#define WORD_SIZE 4
-#define RGB_DATA_ARRAY_SIZE (RGB_DATA_ARRAY_SIZE_IN_WORDS * WORD_SIZE)
-#define DEVICE_ID_LAST_DIGITS 77
-#define HSV_DATA_SIGNATURE 0b001011
-#define RGB_DATA_ARRAY_SIGNATURE 0b01011011
 
 #define GET_MAX(a, b) (((a) > (b))? (a) : (b))
 #define GET_MIN(a, b) (((a) > (b))? (b) : (a))
 
-static bool offset_defined = false;
-static uint32_t mem_offset;
-
 
 hsv_data_t new_hsv(uint16_t h, uint8_t s, uint8_t v) {
-    return (hsv_data_t) {.h = h, .s = s, .v = v, ._signature = HSV_DATA_SIGNATURE};
+    return (hsv_data_t) {.h = h, .s = s, .v = v};
 }
 
 rgb_data_t new_rgb(uint8_t r, uint8_t g, uint8_t b) {
@@ -149,120 +137,4 @@ void delete_color_from_array(rgb_data_array_t* rgb_array, size_t color_index) {
     }
 
     NRF_LOG_INFO("Deleted color");
-}
-
-static rgb_data_array_t get_rgb_array_by_address(uint32_t address) {
-    rgb_data_array_t rgb_data;
-    memcpy(&rgb_data, (uint32_t*) address, RGB_DATA_ARRAY_SIZE);
-    return rgb_data;
-}
-
-rgb_data_array_t get_last_saved_rgb_array() {
-    if (offset_defined) {
-        return get_rgb_array_by_address(GET_ADDRESS_BY_OFFSET(mem_offset));
-    }
-
-    rgb_data_array_t* rgb_array_ptr;
-    for (uint32_t address = APP_DATA_ADDR + CODE_PAGE_SIZE; address <= BOOTLOADER_ADDR - RGB_DATA_ARRAY_SIZE; address += RGB_DATA_ARRAY_SIZE) {
-        rgb_array_ptr = (rgb_data_array_t*) address;
-        NRF_LOG_INFO("rgb_data_array_t address is 0x%" PRIx32, address);
-        NRF_LOG_INFO("rgb_data_array_t signature is 0x%" PRIx8, rgb_array_ptr->_signature);
-
-        if (rgb_array_ptr->_signature != RGB_DATA_ARRAY_SIGNATURE) {
-            NRF_LOG_INFO("Found invalid data at address 0x%" PRIx32, address);
-            if (address == APP_DATA_ADDR + CODE_PAGE_SIZE) {
-                break;
-            }
-
-            NRF_LOG_INFO("Found rgb_data_array_t at address 0x%" PRIx32, address - RGB_DATA_ARRAY_SIZE);
-            mem_offset = address - APP_DATA_ADDR - RGB_DATA_ARRAY_SIZE;
-            offset_defined = true;
-                
-            
-            return get_rgb_array_by_address(GET_ADDRESS_BY_OFFSET(mem_offset));
-        }
-    }
-
-    return (rgb_data_array_t) {._signature = RGB_DATA_ARRAY_SIGNATURE, .count = 0};
-}
-
-void save_colors_array(rgb_data_array_t* rgb_data_array) {
-    if (!offset_defined || GET_ADDRESS_BY_OFFSET(mem_offset + RGB_DATA_ARRAY_SIZE) > BOOTLOADER_ADDR) {
-        mem_offset = CODE_PAGE_SIZE;
-        offset_defined = true;
-    }
-    else {
-        mem_offset += RGB_DATA_ARRAY_SIZE;
-    }
-
-    NRF_LOG_INFO("Attempt to write colors_array at address 0x%" PRIx32, GET_ADDRESS_BY_OFFSET(mem_offset));
-    for (size_t i = 0; i < RGB_DATA_ARRAY_SIZE_IN_WORDS; i++) {
-        if (mem_offset % CODE_PAGE_SIZE == 0) {
-            nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(mem_offset));
-        }
-
-        nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(mem_offset), rgb_data_array->_value[i]);
-        while (!nrfx_nvmc_write_done_check());
-
-        mem_offset += WORD_SIZE;
-    }
-    mem_offset -= RGB_DATA_ARRAY_SIZE;
-    NRF_LOG_INFO("Colors array wrote at address 0x%" PRIx32, GET_ADDRESS_BY_OFFSET(mem_offset));
-}
-
-static uint32_t hsv_offset = 0;
-static bool hsv_offset_defined = false;
-
-hsv_data_t get_last_saved_hsv_data() {
-    if (offset_defined) {
-        hsv_data_t hsv;
-        memcpy(&hsv, (void*) GET_ADDRESS_BY_OFFSET(hsv_offset), WORD_SIZE);
-        return hsv;
-    }
-
-    for (uint32_t address = APP_DATA_ADDR; address <= GET_ADDRESS_BY_OFFSET(CODE_PAGE_SIZE) - WORD_SIZE; address += WORD_SIZE) {
-        hsv_data_t* hsv_ptr = (hsv_data_t*) address;
-        NRF_LOG_INFO("hsv_data_t address is 0x%" PRIx32, address);
-
-        if (hsv_ptr->_signature != HSV_DATA_SIGNATURE) {
-            NRF_LOG_INFO("Found invalid data at address 0x%" PRIx32, address);
-            if (address == APP_DATA_ADDR) {
-                break;
-            }
-
-            
-            hsv_offset = address - APP_DATA_ADDR - WORD_SIZE;
-            hsv_offset_defined = true;
-
-            hsv_data_t hsv;
-            memcpy(&hsv, (void*) GET_ADDRESS_BY_OFFSET(hsv_offset), WORD_SIZE);
-            NRF_LOG_INFO("Found hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv._value, address - WORD_SIZE);
-            
-            return hsv;
-        }
-    }
-    return new_hsv(360. * DEVICE_ID_LAST_DIGITS / 100, 100, 100);
-}
-
-void write_hsv_data(hsv_data_t* hsv_ptr) {
-    if (!hsv_offset_defined) {
-        hsv_offset = 0;
-        hsv_offset_defined = true;
-    }
-    else {
-        hsv_offset = (hsv_offset + WORD_SIZE) % CODE_PAGE_SIZE;
-    }
-
-    if (hsv_offset % CODE_PAGE_SIZE == 0) {
-        nrfx_nvmc_page_erase(GET_ADDRESS_BY_OFFSET(hsv_offset));
-    }
-
-    NRF_LOG_INFO("Attempt to write hsv_data_t 0x%" PRIx32 " at address 0x%" PRIx32, hsv_ptr->_value, GET_ADDRESS_BY_OFFSET(hsv_offset));
-    nrfx_nvmc_word_write(GET_ADDRESS_BY_OFFSET(hsv_offset), hsv_ptr->_value);
-    while(!nrfx_nvmc_write_done_check());
-}
-
-
-void init_nmvc() {
-    get_last_saved_rgb_array();
 }
