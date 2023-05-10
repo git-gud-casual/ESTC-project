@@ -38,7 +38,7 @@ apply_color <color_name> - Применяет цвет с именем color_nam
 del_color <color_name> - Удаляет цвет color_name из памяти
 </pre>
 
-<h2>>BLE Interface</h2
+<h2>BLE Interface</h2
 Название девайса: BLE LED Service
 
 Присутсвует 2 характеристики: характеристика для чтения текущего цвета и для записи цвета.
