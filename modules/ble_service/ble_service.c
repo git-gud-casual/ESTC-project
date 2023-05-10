@@ -8,8 +8,8 @@
 #include "ble_srv_common.h"
 
 
-static ret_code_t estc_ble_add_characteristics(ble_estc_service_t*, ble_gatts_char_handles_t*, 
-                                               uint16_t, uint8_t*, uint16_t, uint8_t, char*);
+static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service, ble_gatts_char_handles_t *char_handle, uint16_t uuid,
+                                               uint8_t *p_val, uint16_t val_len, uint8_t char_properties, bool secure_write, char *cdesc);
 
 ret_code_t estc_ble_service_init(ble_estc_service_t *service)
 {
@@ -34,19 +34,19 @@ ret_code_t estc_ble_service_init(ble_estc_service_t *service)
 
     // Configure led_color_read_char
     error_code = estc_ble_add_characteristics(service, &service->color_read_char, ESTC_COLOR_READ_CHAR_UUID, rgb_default_data, sizeof(rgb_default_data), 
-                                              ESTC_READ_PROPERTY | ESTC_NOTIFY_PROPERTY, ESTC_COLOR_READ_CHAR_DESC);
+                                              ESTC_READ_PROPERTY | ESTC_NOTIFY_PROPERTY, false, ESTC_COLOR_READ_CHAR_DESC);
     APP_ERROR_CHECK(error_code);
 
     // Configure led_color_write_char
     error_code = estc_ble_add_characteristics(service, &service->color_write_char, ESTC_COLOR_WRITE_CHAR_UUID, rgb_default_data, sizeof(rgb_default_data), 
-                                              ESTC_WRITE_PROPERTY, ESTC_COLOR_WRITE_CHAR_DESC);
+                                              ESTC_WRITE_PROPERTY, true, ESTC_COLOR_WRITE_CHAR_DESC);
     APP_ERROR_CHECK(error_code);
 
     return error_code;
 }
 
 static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service, ble_gatts_char_handles_t *char_handle, uint16_t uuid,
-                                               uint8_t *p_val, uint16_t val_len, uint8_t char_properties, char *cdesc)
+                                               uint8_t *p_val, uint16_t val_len, uint8_t char_properties, bool secure_write, char *cdesc)
 {
     ret_code_t error_code = NRF_SUCCESS;
 
@@ -72,7 +72,12 @@ static ret_code_t estc_ble_add_characteristics(ble_estc_service_t *service, ble_
 
     // Set read/write security levels to our attribute metadata using `BLE_GAP_CONN_SEC_MODE_SET_OPEN`
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.read_perm);
-    BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.write_perm);
+    if (!secure_write) {
+        BLE_GAP_CONN_SEC_MODE_SET_OPEN(&attr_md.write_perm);
+    }
+    else {
+        BLE_GAP_CONN_SEC_MODE_SET_ENC_NO_MITM(&attr_md.write_perm);
+    }
 
     // Configure uuid, default value
     ble_uuid_t char_uuid = {.uuid = uuid, .type=BLE_UUID_TYPE_VENDOR_BEGIN};
