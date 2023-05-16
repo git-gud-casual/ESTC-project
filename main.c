@@ -126,17 +126,6 @@
 #define DEAD_BEEF                       0xDEADBEEF                              /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
 
-/* Secure config */
-#define SEC_PARAM_BOND 0
-#define SEC_PARAM_MITM 0
-#define SEC_PARAM_LESC 0
-#define SEC_PARAM_KEYPRESS 0
-#define SEC_PARAM_IO_CAPABILITIES BLE_GAP_IO_CAPS_NONE
-#define SEC_PARAM_OOB 0
-#define SEC_PARAM_MIN_KEY_SIZE 7
-#define SEC_PARAM_MAX_KEY_SIZE 16
-
-
 NRF_BLE_GATT_DEF(m_gatt);                                                       /**< GATT module instance. */
 NRF_BLE_QWR_DEF(m_qwr);                                                         /**< Context for the Queued Write module.*/
 BLE_ADVERTISING_DEF(m_advertising);                                             /**< Advertising module instance. */
@@ -594,49 +583,6 @@ void buttons_init() {
 }
 
 
-void pm_evt_handler(pm_evt_t const * p_evt) {
-    pm_handler_on_pm_evt(p_evt);
-    pm_handler_disconnect_on_sec_failure(p_evt);
-    
-    switch (p_evt->evt_id)
-    {
-        case PM_EVT_PEERS_DELETE_SUCCEEDED:
-            advertising_start();
-            break;
-        default:
-            break;
-    }
-}
-
-
-void peer_manager_init() {
-    ble_gap_sec_params_t sec_param;
-    ret_code_t err_code;
-    err_code = pm_init();
-    APP_ERROR_CHECK(err_code);
-
-    memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
-    // Security parameters to be used for all security procedures.
-    sec_param.bond = SEC_PARAM_BOND;
-    sec_param.mitm = SEC_PARAM_MITM;
-    sec_param.lesc = SEC_PARAM_LESC;
-    sec_param.keypress = SEC_PARAM_KEYPRESS;
-    sec_param.io_caps = SEC_PARAM_IO_CAPABILITIES;
-    sec_param.oob = SEC_PARAM_OOB;
-    sec_param.min_key_size = SEC_PARAM_MIN_KEY_SIZE;
-    sec_param.max_key_size = SEC_PARAM_MAX_KEY_SIZE;
-    sec_param.kdist_own.enc = 0;
-    sec_param.kdist_own.id = 0;
-    sec_param.kdist_peer.enc = 0;
-    sec_param.kdist_peer.id = 0;
-    err_code = pm_sec_params_set(&sec_param);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = pm_register(pm_evt_handler);
-    APP_ERROR_CHECK(err_code);
-}
-
-
 /**@brief Function for application main entry.
  */
 int main(void)
@@ -660,7 +606,6 @@ int main(void)
         cli_init(commands_cli_listener);
         commands_init();
     #endif
-    peer_manager_init();
 
     // Start execution.
     application_timers_start();

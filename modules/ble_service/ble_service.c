@@ -39,7 +39,7 @@ ret_code_t estc_ble_service_init(ble_estc_service_t *service)
 
     // Configure led_color_write_char
     error_code = estc_ble_add_characteristics(service, &service->color_write_char, ESTC_COLOR_WRITE_CHAR_UUID, rgb_default_data, sizeof(rgb_default_data), 
-                                              ESTC_WRITE_PROPERTY, true, ESTC_COLOR_WRITE_CHAR_DESC);
+                                              ESTC_WRITE_PROPERTY, false, ESTC_COLOR_WRITE_CHAR_DESC);
     APP_ERROR_CHECK(error_code);
 
     return error_code;
