@@ -80,7 +80,7 @@ static void init_page() {
     fs_header_t *phead;
     for (int8_t page_index = 0; page_index < 3; page_index++) {
         phead = (fs_header_t*)(APP_DATA_ADDR + CODE_PAGE_SIZE * page_index);
-        if (!(phead->id & phead->nid) && check_crc(phead)) {
+        if ((phead->id ^ 0xFF) == phead->nid && check_crc(phead)) {
             curr_page = page_index;
         }
     }
@@ -89,7 +89,6 @@ static void init_page() {
         NRF_LOG_INFO("Page %" PRIi8, curr_page);
         err_code = fs_format();
         APP_ERROR_CHECK(err_code);
-        curr_page = 0;
     }
 }
 
@@ -103,13 +102,14 @@ static fs_header_t *next_header(fs_header_t *phead) {
     }
     else {
         phead = (fs_header_t*)((uint8_t*)phead + FS_HEADER_SIZE_BYTES + get_rounded_length(phead->length));
-
+        
         if ((uintptr_t) phead >= BOOTLOADER_ADDR || (uintptr_t) phead < APP_DATA_ADDR) {
             return NULL;
         }
     }
 
-    if (!(phead->id & phead->nid) && check_crc(phead)) {
+    NRF_LOG_INFO("%" PRIx8 " %" PRIx8 " %" PRIx8, phead->id, phead->nid, phead->id ^ 0xFF);
+    if ((phead->id ^ 0xFF) == phead->nid && check_crc(phead)) {
         NRF_LOG_INFO("fs_next_header: Find header at 0x%" PRIXPTR " with name \"%s\"", (uintptr_t) phead, phead->record_name);
         return phead;
     }
@@ -263,7 +263,8 @@ static fs_header_t new_header(char *name, void *src, size_t bytes_count) {
         head.id = record_to_rewrite->id;
     }
     
-    head.nid = ~head.id;
+    head.nid = head.id ^ 0xFF;
+    NRF_LOG_INFO("New head %" PRIx8 " %" PRIx8, head.id, head.nid);
     head.length = bytes_count;
     head._crc8 = crc8((uint8_t*) src, bytes_count);
     strcpy(head.record_name, name);
