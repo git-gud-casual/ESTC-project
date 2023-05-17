@@ -48,6 +48,10 @@ static uint8_t crc8(uint8_t *data_block, size_t length) {
 }
 
 static bool check_crc(fs_header_t *phead) {
+    if (phead->length >= CODE_PAGE_SIZE || (size_t)phead + FS_HEADER_SIZE_BYTES + phead->length >= BOOTLOADER_ADDR) {
+        return false;
+    }
+
     uint8_t crc = crc8((uint8_t*)phead + FS_HEADER_SIZE_BYTES, phead->length);
     return phead->_crc8 == crc;
 }
@@ -83,11 +87,8 @@ static void init_page() {
 
     if (curr_page == -1) {
         NRF_LOG_INFO("Page %" PRIi8, curr_page);
-        if (!is_page_erased(APP_DATA_ADDR)) {
-            NRF_LOG_INFO("Erased");
-            err_code = nrf_fstorage_erase(&fstorage_instance, APP_DATA_ADDR, 1, NULL);
-            APP_ERROR_CHECK(err_code);
-        }
+        err_code = fs_format();
+        APP_ERROR_CHECK(err_code);
         curr_page = 0;
     }
 }
@@ -326,9 +327,13 @@ ret_code_t fs_delete(fs_header_t* header) {
 ret_code_t fs_format() {
     ret_code_t err_code = nrf_fstorage_erase(&fstorage_instance, APP_DATA_ADDR, 3, NULL);
     fs_wait();
+    curr_page = 0;
     return err_code;
 }
 
 ret_code_t fs_init() {
-    return nrf_fstorage_init(&fstorage_instance, &nrf_fstorage_sd, NULL);
+    nrf_fstorage_init(&fstorage_instance, &nrf_fstorage_sd, NULL);
+    fs_wait();
+    init_page();
+    return NRF_SUCCESS;
 }
